@@ -1,0 +1,207 @@
+/* "Precision Desk": near-black surfaces, one green accent for "works",
+   DJI-style yellow only for the noise-cancelling level. */
+:root {
+  color-scheme: dark;
+
+  --bg: #090b0d;
+  --nav: #0c0f12;
+  --surface: #111418;
+  /* Tab and first panel of Gerät, Diagnose and App (MicDeck keeps --surface). */
+  --sheet-sub: #141b25;
+  --surface-2: #171b20;
+  --surface-3: #1e2329;
+  --line: rgba(255, 255, 255, 0.07);
+  --line-2: rgba(255, 255, 255, 0.13);
+  --text: #eef1f4;
+  --text-2: #a6aeb9;
+  --text-3: #69727e;
+
+  --accent: #2fe38a;
+  --accent-deep: #17a862;
+  --accent-ink: #03140a;
+  --nc: #f5d23a;
+  --nc-ink: #1d1600;
+
+  --ok: #2fe38a;
+  --warn: #fbbf24;
+  --error: #f87171;
+  --pending: #94a3b8;
+
+  --radius: 18px;
+  --radius-sm: 11px;
+
+  font-family: "Inter", "Noto Sans", "Cantarell", system-ui, sans-serif;
+  font-size: 15px;
+  line-height: 1.45;
+  color: var(--text);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+}
+
+body {
+  user-select: none;
+  cursor: default;
+  overflow: hidden;
+}
+
+#app {
+  height: 100%;
+}
+
+.card {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.018), transparent 40%), var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 20px 22px;
+}
+
+/* Card heading with an icon in the accent colour. */
+.card-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.card-head > svg {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.card-head h2 {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.card-head p {
+  margin: 1px 0 0;
+  font-size: 13px;
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.card-head .grow {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Small caps section label. */
+.label-caps {
+  margin: 0 0 10px;
+  font-size: 11.5px;
+  font-weight: 650;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+.btn {
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: 10px;
+  border: 1.5px solid var(--line-2);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  transition: border-color 120ms, background 120ms;
+}
+.btn:hover:not(:disabled) {
+  border-color: var(--text-2);
+  background: rgba(255, 255, 255, 0.03);
+}
+.btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.btn svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linejoin: round;
+}
+
+.link {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2);
+  background: none;
+  border: 0;
+  padding: 4px 6px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.link:hover {
+  color: var(--text);
+}
+
+/* "nicht steuerbar" and similar markers. */
+.tag {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text-3);
+  border: 1px solid var(--line-2);
+  border-radius: 6px;
+  padding: 1px 7px;
+  white-space: nowrap;
+}
+
+/* Thin dark scrollbars (WebKitGTK). */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(255, 255, 255, 0.2);
+}
+
+button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+}

@@ -1,0 +1,6 @@
+# pipewire-rs generates its bindings with libclang. Without Fedora's `clang`
+# package (the compiler driver), libclang does not find its own builtin headers
+# such as stdbool.h, so point it there. Not needed once `clang` is installed;
+# adjust the version number after a clang major upgrade.
+[env]
+BINDGEN_EXTRA_CLANG_ARGS = "-I/usr/lib/clang/22/include"

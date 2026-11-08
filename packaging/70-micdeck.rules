@@ -1,0 +1,7 @@
+# MicDeck: lets the user logged in at this computer read the status data of a
+# DJI Mic Mini receiver (USB 2ca3:4011). Nothing else changes: no MODE=0666,
+# no extra group, other users and remote logins get no access.
+#
+# The file number must stay below 73 so systemd-logind's "uaccess" tag applies.
+# Remove the file to undo: sudo rm /etc/udev/rules.d/70-micdeck.rules
+SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ATTR{idVendor}=="2ca3", ATTR{idProduct}=="4011", TAG+="uaccess"

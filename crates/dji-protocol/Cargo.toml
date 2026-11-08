@@ -1,0 +1,15 @@
+[package]
+name = "dji-protocol"
+description = "Framing, CRC, command building and status decoding for DJI wireless microphones (based on DJI-Mic-Control's protocol crate)."
+license = "Unlicense"
+version.workspace = true
+# Kept at the upstream edition so changes stay easy to send back as patches.
+edition = "2021"
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }

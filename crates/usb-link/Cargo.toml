@@ -1,0 +1,15 @@
+[package]
+name = "usb-link"
+description = "Finds DJI receivers on USB, follows hotplug and streams decoded status frames (read-only)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+
+[dependencies]
+dji-protocol = { workspace = true }
+micdeck-core = { workspace = true }
+nusb = { workspace = true }
+futures-lite = { workspace = true }
+log = { workspace = true }

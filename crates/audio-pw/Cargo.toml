@@ -1,0 +1,14 @@
+[package]
+name = "audio-pw"
+description = "PipeWire side of MicDeck: audio inputs, default input, mute state and a non-recording level meter."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+
+[dependencies]
+micdeck-core = { workspace = true }
+pipewire = { workspace = true }
+serde_json = { workspace = true }
+log = { workspace = true }

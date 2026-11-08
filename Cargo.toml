@@ -1,0 +1,35 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/dji-protocol",
+    "crates/micdeck-core",
+    "crates/usb-link",
+    "crates/audio-pw",
+    "app/src-tauri",
+]
+
+[workspace.package]
+version = "0.1.24"
+edition = "2024"
+rust-version = "1.90"
+publish = false
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/Hendrik4K/micdeck"
+
+[workspace.dependencies]
+dji-protocol = { path = "crates/dji-protocol" }
+micdeck-core = { path = "crates/micdeck-core" }
+usb-link = { path = "crates/usb-link" }
+audio-pw = { path = "crates/audio-pw" }
+
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+log = "0.4"
+nusb = "0.2.9"
+futures-lite = "2"
+pipewire = "0.10.1"
+
+[profile.release]
+strip = true
+lto = "thin"
+codegen-units = 1
