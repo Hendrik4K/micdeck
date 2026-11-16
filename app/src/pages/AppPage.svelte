@@ -11,7 +11,7 @@
     {
       id: "notifications",
       label: "Benachrichtigungen",
-      description: "Meldet sich, wenn das Mikrofon nicht mehr bereit ist, und wenn es wieder geht.",
+      description: "Kurze Desktop-Meldung, wenn das Mikrofon nicht mehr bereit ist oder MicDeck es kurz freigibt. Standardmäßig aus.",
     },
     {
       id: "dockDictation",

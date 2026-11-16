@@ -6,6 +6,7 @@
     value,
     disabled = false,
     tone = "plain",
+    stretch = false,
     label,
     onchange,
   }: {
@@ -14,12 +15,26 @@
     disabled?: boolean;
     /** `nc`: the selected option in DJI-style yellow with a waveform. */
     tone?: "plain" | "nc";
+    /** Fill the available width, options equally wide. */
+    stretch?: boolean;
     label: string;
     onchange?: (value: string) => void;
   } = $props();
+
+  // One highlight that slides to the chosen option instead of jumping.
+  const index = $derived(options.findIndex((o) => o.value === value));
 </script>
 
-<div class="seg tone-{tone}" role="radiogroup" aria-label={label} class:disabled>
+<div
+  class="seg tone-{tone}"
+  class:stretch
+  role="radiogroup"
+  aria-label={label}
+  class:disabled
+  style:--count={options.length}
+  style:--index={Math.max(0, index)}
+>
+  {#if index >= 0}<span class="thumb" aria-hidden="true"></span>{/if}
   {#each options as option (option.value)}
     <button
       role="radio"
@@ -44,19 +59,45 @@
 
 <style>
   .seg {
+    --pad: 4px;
+    --gap: 4px;
+    position: relative;
     flex: none;
-    display: inline-flex;
-    gap: 4px;
-    padding: 4px;
+    display: inline-grid;
+    grid-template-columns: repeat(var(--count), minmax(74px, 1fr));
+    gap: var(--gap);
+    padding: var(--pad);
     border-radius: 12px;
     background: var(--surface-3);
     box-shadow: inset 0 0 0 1px var(--line);
   }
+  .stretch {
+    display: grid;
+    width: 100%;
+  }
+  .thumb {
+    position: absolute;
+    top: var(--pad);
+    bottom: var(--pad);
+    left: var(--pad);
+    width: calc((100% - 2 * var(--pad) - (var(--count) - 1) * var(--gap)) / var(--count));
+    transform: translateX(calc(var(--index) * (100% + var(--gap))));
+    border-radius: 9px;
+    background: #f1f3f5;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+    transition:
+      transform 320ms cubic-bezier(0.3, 0.7, 0.2, 1),
+      background 200ms;
+  }
+  .tone-nc .thumb {
+    background: var(--nc);
+    box-shadow: 0 1px 10px rgba(245, 210, 58, 0.25);
+  }
   button {
+    position: relative;
     font: inherit;
     font-size: 14px;
     font-weight: 600;
-    min-width: 74px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -67,19 +108,15 @@
     background: transparent;
     color: var(--text-2);
     cursor: pointer;
-    transition: background 140ms, color 140ms;
+    transition: color 240ms;
   }
   button:hover:not(:disabled):not(.selected) {
     color: var(--text);
-    background: rgba(255, 255, 255, 0.04);
   }
   button.selected {
-    background: #f1f3f5;
     color: #0c0e10;
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
   }
   .tone-nc button.selected {
-    background: var(--nc);
     color: var(--nc-ink);
   }
   button:disabled {

@@ -12,7 +12,7 @@
     onselect,
   }: {
     page: Page;
-    /** The DJI input is muted: MicDeck turns yellow. */
+    /** The DJI input is muted: MicDeck turns red. */
     muted?: boolean;
     /** Worst check level, marked on "Diagnose". */
     diagnose: CheckLevel;
@@ -21,7 +21,7 @@
 
   // MicDeck itself is the main view; the others open to its right like a submenu.
   const items: { id: Page; label: string; icon: string }[] = [
-    { id: "device", label: "Gerät", icon: "M5 7h9M18 7h1M5 17h3M12 17h7M16 4.5v5M10 14.5v5" },
+    { id: "device", label: "Einstellungen", icon: "M5 7h9M18 7h1M5 17h3M12 17h7M16 4.5v5M10 14.5v5" },
     { id: "diagnose", label: "Diagnose", icon: "M3 12h4l2.5-6 4 12 2.5-6H21" },
     { id: "app", label: "App", icon: "M12 9.2a2.8 2.8 0 1 0 0 5.6 2.8 2.8 0 0 0 0-5.6zM12 3v2.2M12 18.8V21M5.6 5.6l1.6 1.6M16.8 16.8l1.6 1.6M3 12h2.2M18.8 12H21M5.6 18.4l1.6-1.6M16.8 7.2l1.6-1.6" },
   ];
@@ -90,8 +90,8 @@
   .main.muted,
   .main.muted.active,
   .main.muted svg {
-    color: var(--warn);
-    stroke: var(--warn);
+    color: var(--error);
+    stroke: var(--error);
   }
   /* Active: the tab behind it takes over. */
   .main.active {

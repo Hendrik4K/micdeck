@@ -99,13 +99,13 @@ zusätzlich jedes Statuspaket des Empfängers als Hex-Bytes.
 - **Im Ladecase stumm** (Panel-Menü, standardmäßig aus): Sender 1 zurück ins Ladecase schaltet das
   Mikro stumm, Herausnehmen hebt die Stummschaltung auf. Läuft ein Diktat, wird erst abgeschickt und
   dann stummgeschaltet. Will währenddessen ein anderes Programm aufnehmen (etwa der Browser), gibt
-  MicDeck das Mikro nur für diese Aufnahme frei, meldet das per Benachrichtigung und schaltet 2 s
+  MicDeck das Mikro nur für diese Aufnahme frei, meldet das per Benachrichtigung (falls eingeschaltet) und schaltet 2 s
   nach dem Ende wieder stumm. Eine Stummschaltung per Knopf hebt MicDeck dafür nie auf.
 - **Stumm-Knopf** (großer runder Knopf unter der Pegelanzeige und im Panel-Menü): schaltet über WirePlumber stumm. Beim
   Mic Mini legt das den USB-Stummschalter im Empfänger selbst um („Mic Capture Switch“). Dann kommt bei
   keinem Programm mehr Ton an, auch nicht bei Programmen, die PipeWire umgehen. Hebt ein anderes
   Programm die Stummschaltung auf, warnt MicDeck. Das Panel-Symbol bekommt einen Schrägstrich.
-- **Benachrichtigungen:** Wenn der Empfänger abgezogen wird, ein Sender länger als 3 s die Funkverbindung
+- **Benachrichtigungen** (standardmäßig aus, einschalten im Panel-Menü oder auf der Seite „App“): Wenn der Empfänger abgezogen wird, ein Sender länger als 3 s die Funkverbindung
   verliert oder die Ampel länger als 3 s rot ist, und zwar nur, wenn vorher schon einmal alles bereit
   war. Wenn danach alles wieder bereit ist, kommt einmal „Wieder einsatzbereit“.
 - **Diktat über Ladecase (Claude)**, im Panel-Menü, standardmäßig aus: Nimmst du Sender 1 aus dem

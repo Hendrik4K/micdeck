@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tick } from "svelte";
   import type { Check, DeviceImages, Snapshot, TransmitterView } from "./types";
   // Built-in placeholders: silhouettes of the devices (AI-generated, see
   // THIRD_PARTY.md). The user's own pictures replace them.
@@ -18,26 +19,36 @@
   }
   const capital = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
   const mark = (c: Check | undefined) => c?.level ?? "pending";
-  // USB and radio have their own rows above; other problems get a line here.
-  // Muted with nothing else wrong: a yellow "Stummgeschaltet", the rows stay as they are.
+  // Muted with nothing else wrong: still "Einsatzbereit" in green, but the
+  // light and the radio waves turn red. Details live on the Diagnose page.
   const muteOnly = $derived(
     snapshot.audio.source?.muted === true &&
       snapshot.checks.every((c) => c.id === "mute" || c.id === "signal" || c.level === "ok" || c.level === "inactive"),
   );
-  const verdict = $derived(muteOnly ? { level: "warn" as const, title: "Stummgeschaltet" } : snapshot.verdict);
-  const issues = $derived(
-    snapshot.checks.filter(
-      (c) => c.id !== "usb" && c.id !== "radio" && !(muteOnly && (c.id === "mute" || c.id === "signal")) && (c.level === "warn" || c.level === "error"),
-    ),
-  );
+  const verdict = $derived(muteOnly ? { level: "ok" as const, title: "Einsatzbereit" } : snapshot.verdict);
+  const muted = $derived(snapshot.audio.source?.muted === true);
+  /** Charging: bar, blinking cell and bolt share one beat (see `sync`). */
+  let unitsEl = $state<HTMLElement | null>(null);
+  const chargeKey = $derived(snapshot.transmitters.map((t) => `${t.charging}:${t.battery?.bars}`).join(","));
+  $effect(() => {
+    void chargeKey;
+    void sync();
+  });
+  async function sync() {
+    await tick();
+    // Align every charging animation to the same clock, whenever one starts.
+    for (const el of unitsEl?.querySelectorAll<HTMLElement>(".beat") ?? []) {
+      for (const a of el.getAnimations()) a.startTime = 0;
+    }
+  }
 </script>
 
-<section class="stage level-{verdict.level}" aria-live="polite">
+<section class="stage level-{verdict.level}" class:muted aria-live="polite">
   <div class="status">
     <p class="kicker">Dein {snapshot.receiver?.name ?? "DJI Mic Mini"}</p>
     <h1 class:long={verdict.title.length > 18}>{verdict.title}</h1>
 
-    <ul class="units">
+    <ul class="units" bind:this={unitsEl}>
       <li>
         <span class="name">Empfänger</span>
         {#if mark(usb) === "ok"}
@@ -48,27 +59,36 @@
           <span class="pill {mark(usb)}">{usb?.value ?? "Prüfe …"}</span>
         {/if}
       </li>
-      <!-- A second transmitter only shows up once it is switched on. -->
-      {#each snapshot.transmitters.filter((t) => t.unit === 1 || t.connected === true) as tx (tx.unit)}
+      <!-- Only transmitter 1 for now: most people use one microphone. -->
+      {#each snapshot.transmitters.filter((t) => t.unit === 1) as tx (tx.unit)}
         <li class:dim={tx.connected !== true}>
           <span class="name">{tx.unit === 1 ? "Mikrofon" : `Mikrofon ${tx.unit}`}</span>
           {#if tx.connected === true}
             {#if tx.battery}
+              {@const at = Math.min(tx.battery.bars, 5)}
               <span
                 class="battery"
-                class:low={tx.battery.low}
-                class:critical={tx.battery.critical}
+                class:loading={tx.charging === true}
+                class:low={tx.battery.low && !tx.charging}
+                class:critical={tx.battery.critical && !tx.charging}
                 title="Gerätewert: Stufe {tx.battery.gauge} von 7 (1 = voll)"
               >
                 {#each Array.from({ length: 6 }, (_, i) => i) as i (i)}
-                  <span class="cell" class:on={i < tx.battery.bars}></span>
+                  <span
+                    class="cell"
+                    class:on={i < tx.battery.bars}
+                    class:beat={tx.charging === true && i <= at}
+                    class:next={tx.charging === true && i === at}
+                    style:--i={i}
+                  ></span>
                 {/each}
               </span>
             {/if}
             {#if tx.charging}
-              <span class="mark bolt" title={tx.battery ? `Lädt · ${tx.battery.label}` : "Lädt im Ladecase"}>
-                <svg viewBox="0 0 16 16" aria-label="lädt"><path d="M9 1.5L3.5 9H8l-1 5.5L12.5 7H8z" /></svg>
-              </span>
+              <svg class="bolt beat" viewBox="0 0 16 16" aria-label="lädt">
+                <title>{tx.battery ? `Lädt · ${tx.battery.label}` : "Lädt im Ladecase"}</title>
+                <path d="M9 1.5L3.5 9H8l-1 5.5L12.5 7H8z" />
+              </svg>
             {:else if tx.battery && tx.battery.gauge === 1}
               <span class="mark full" title="Akku voll">
                 <svg viewBox="0 0 16 16" aria-label="voll"><path d="M4 8.5l2.6 2.6L12 5.5" /></svg>
@@ -84,18 +104,9 @@
         </li>
       {/each}
     </ul>
-    {#each issues as issue (issue.id)}
-      <p class="issue {issue.level}">{issue.label}: {issue.value}</p>
-    {/each}
   </div>
 
   <div class="devices" class:absent={!snapshot.receiver} aria-hidden="true">
-    <img class="rx" class:custom={images.receiver !== null} src={images.receiver ?? receiverImg} alt="" />
-    <svg class="waves" class:on={linked} viewBox="0 0 40 60">
-      <path d="M8 22a11 11 0 0 1 0 16" />
-      <path d="M16 15a20 20 0 0 1 0 30" />
-      <path d="M24 8a29 29 0 0 1 0 44" />
-    </svg>
     <div class="txwrap">
       <img
         class="tx"
@@ -104,13 +115,13 @@
         src={images.transmitter ?? transmitterImg}
         alt=""
       />
-      {#if tx1?.connected && tx1.charging}
-        <span class="charging">
-          <svg viewBox="0 0 16 16"><path d="M9 1.5L3.5 9H8l-1 5.5L12.5 7H8z" /></svg>
-          Im Ladecase
-        </span>
-      {/if}
     </div>
+    <svg class="waves" class:on={linked} viewBox="0 0 40 60">
+      <path d="M8 22a11 11 0 0 1 0 16" />
+      <path d="M16 15a20 20 0 0 1 0 30" />
+      <path d="M24 8a29 29 0 0 1 0 44" />
+    </svg>
+    <img class="rx" class:custom={images.receiver !== null} src={images.receiver ?? receiverImg} alt="" />
   </div>
   <!-- Status-coloured light over the pictures, which sit on pure black. -->
   <div class="glow" aria-hidden="true"></div>
@@ -124,7 +135,7 @@
     grid-template-columns: minmax(300px, 0.9fr) minmax(0, 1.2fr);
     align-items: center;
     gap: 12px;
-    min-height: 280px;
+    min-height: 336px;
     padding: 26px 34px;
     border-radius: 22px;
     border: 1px solid var(--line);
@@ -139,6 +150,13 @@
   .level-ok { --tone: var(--ok); }
   .level-warn { --tone: var(--warn); }
   .level-error { --tone: var(--error); }
+  /* The light over the pictures: the status colour, red while muted. */
+  .stage {
+    --light: var(--tone);
+  }
+  .stage.muted {
+    --light: var(--error);
+  }
 
   .kicker {
     margin: 0;
@@ -169,28 +187,25 @@
     max-width: 430px;
   }
   .units li {
+    position: relative;
     display: flex;
     align-items: center;
     gap: 12px;
     padding: 9px 0;
-    border-top: 1px solid var(--line);
     font-size: 16px;
   }
-  .units li:first-child {
-    border-top: 0;
+  /* Divider that fades out to the right instead of ending hard. */
+  .units li + li::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, var(--line-2) 0%, var(--line) 45%, transparent 100%);
   }
   .units li.dim .name {
     color: var(--text-2);
-  }
-  .issue {
-    margin: 8px 0 0;
-    font-size: 13.5px;
-  }
-  .issue.warn {
-    color: var(--warn);
-  }
-  .issue.error {
-    color: var(--error);
   }
   .name {
     font-weight: 600;
@@ -219,13 +234,6 @@
     stroke-width: 2.2;
     stroke-linecap: round;
     stroke-linejoin: round;
-  }
-  .mark.bolt {
-    background: color-mix(in srgb, var(--warn) 18%, transparent);
-    box-shadow: inset 0 0 0 1.5px var(--warn);
-  }
-  .mark.bolt svg {
-    fill: var(--warn);
   }
   .ok-dot {
     display: grid;
@@ -305,27 +313,82 @@
     background: var(--error);
   }
 
+  /* Charging: a light runs through the filled cells, the cell being charged
+     blinks, and the bolt beside it pulses on the same beat. */
+  .battery.loading .cell.on {
+    animation: sweep 1.4s ease-in-out infinite;
+    animation-delay: calc(var(--i) * 90ms);
+  }
+  .battery.loading .cell.next {
+    background: var(--ok);
+    animation: charge 1.4s ease-in-out infinite;
+    animation-delay: 0s;
+  }
+  @keyframes sweep {
+    0%,
+    60%,
+    100% {
+      filter: none;
+    }
+    25% {
+      filter: brightness(1.55) saturate(0.8);
+    }
+  }
+  @keyframes charge {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.12;
+    }
+  }
+  .bolt {
+    width: 20px;
+    height: 20px;
+    fill: var(--warn);
+    filter: drop-shadow(0 0 6px rgba(251, 191, 36, 0.55));
+    transform-origin: center;
+    animation: bolt 1.4s ease-in-out infinite;
+  }
+  @keyframes bolt {
+    0%,
+    100% {
+      opacity: 1;
+      transform: scale(1);
+    }
+    50% {
+      opacity: 0.3;
+      transform: scale(0.82);
+    }
+  }
+
+  /* The pictures fill the right part of the stage up to its edges, so the
+     receiver can rise from the bottom edge, partly cut off. */
+  .status {
+    grid-column: 1;
+  }
   .devices {
-    position: relative;
-    height: 100%;
-    min-height: 250px;
-    display: grid;
-    grid-template-columns: 1.25fr 52px 1fr;
-    align-items: center;
+    position: absolute;
+    inset: 0 0 0 36%;
+    --tx-h: 300px;
+  }
+  .devices > * {
+    position: absolute;
   }
   .glow {
     position: absolute;
     inset: 0;
     z-index: 1;
     pointer-events: none;
-    background: radial-gradient(42% 75% at 70% 58%, color-mix(in srgb, var(--tone) 17%, transparent), transparent 72%);
+    background: radial-gradient(var(--glow-size, 34% 70%) at var(--glow-at, 64% 50%), color-mix(in srgb, var(--light) 18%, transparent), transparent 72%);
     mix-blend-mode: screen;
     transition: background 400ms ease;
   }
   img {
-    position: relative;
+    display: block;
     width: 100%;
-    max-height: 290px;
+    height: 100%;
     object-fit: contain;
     /* The pictures sit on a dark studio backdrop; fade its edges out. */
     mask-image: radial-gradient(closest-side, #000 82%, transparent 100%);
@@ -334,34 +397,8 @@
   /* The user's own pictures are cut out: no edge fade, a soft rim instead. */
   img.custom {
     mask-image: none;
-    max-height: 240px;
     filter: drop-shadow(0 0 1px rgba(255, 255, 255, 0.35))
-      drop-shadow(0 8px 26px color-mix(in srgb, var(--tone) 32%, transparent));
-  }
-  .txwrap {
-    position: relative;
-    display: grid;
-    place-items: center;
-  }
-  .charging {
-    position: absolute;
-    bottom: 8%;
-    z-index: 2;
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    padding: 3px 10px 3px 7px;
-    border-radius: 999px;
-    font-size: 12px;
-    font-weight: 650;
-    color: var(--accent-ink);
-    background: var(--ok);
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
-  }
-  .charging svg {
-    width: 12px;
-    height: 12px;
-    fill: currentColor;
+      drop-shadow(0 8px 26px color-mix(in srgb, var(--light) 32%, transparent));
   }
   .tx.off {
     opacity: 0.35;
@@ -372,12 +409,11 @@
     filter: grayscale(1);
   }
   .waves {
-    position: relative;
     width: 40px;
     height: 60px;
-    justify-self: center;
+    z-index: 2;
     fill: none;
-    stroke: var(--ok);
+    stroke: var(--light);
     stroke-width: 3.2;
     stroke-linecap: round;
     opacity: 0;
@@ -404,15 +440,38 @@
       opacity: 1;
     }
   }
+
+  /* The receiver in the middle, tilted to the left; the transmitter comes
+     up from the bottom right corner, tilted the other way and half hidden.
+     The waves run between them. */
+  .stage {
+    --glow-at: 52% 50%;
+  }
+  .rx {
+    z-index: 1;
+    left: 6%;
+    top: 50%;
+    width: 400px;
+    height: 233px;
+    transform: translateY(-50%) rotate(-9deg);
+  }
+  .txwrap {
+    z-index: 2;
+    right: 2%;
+    bottom: -64px;
+    width: 260px;
+    height: var(--tx-h);
+    transform: rotate(11deg);
+  }
+  .waves {
+    left: 70%;
+    top: 22%;
+    transform: rotate(200deg);
+  }
+
   @media (max-width: 820px) {
     .stage {
       grid-template-columns: 1fr;
-    }
-    .devices {
-      min-height: 200px;
-    }
-    img {
-      max-height: 200px;
     }
   }
 </style>

@@ -181,7 +181,7 @@ fn check_release(app: &AppHandle, snapshot: &Snapshot) {
             let apps = source.capture_apps.join(", ");
             log::info!("released the microphone for {apps}");
             apply_mute(app, false);
-            notify(micdeck_core::notify::Notice {
+            notify(app, micdeck_core::notify::Notice {
                 title: "Mikrofon kurz freigegeben".into(),
                 body: format!("{apps} nimmt auf. Danach schaltet MicDeck wieder stumm."),
             });
@@ -215,14 +215,14 @@ fn check_release(app: &AppHandle, snapshot: &Snapshot) {
 
 /// Called with every snapshot: arms the watch once the mute took effect and
 /// reports when someone else lifts it.
-fn check_mute_watch(muted: Option<bool>) {
+fn check_mute_watch(app: &AppHandle, muted: Option<bool>) {
     let mut watch = MUTE_WATCH.lock().unwrap_or_else(|p| p.into_inner());
     *watch = match (*watch, muted) {
         (MuteWatch::Requested(_), Some(true)) => MuteWatch::Armed,
         (MuteWatch::Requested(at), _) if at.elapsed() > Duration::from_secs(3) => MuteWatch::Off,
         (MuteWatch::Armed, Some(false)) => {
             log::warn!("mute lifted by another program");
-            notify(micdeck_core::notify::Notice {
+            notify(app, micdeck_core::notify::Notice {
                 title: "Stummschaltung aufgehoben".into(),
                 body: "Ein anderes Programm hat das DJI-Mikrofon wieder eingeschaltet.".into(),
             });
@@ -260,7 +260,11 @@ pub(crate) fn toggle_window(app: &AppHandle) {
     if visible { hide_window(app) } else { show_window(app) }
 }
 
-fn notify(notice: micdeck_core::notify::Notice) {
+/// A desktop notification, only if the user switched them on (off by default).
+fn notify(app: &AppHandle, notice: micdeck_core::notify::Notice) {
+    if !app.state::<SharedSettings>().lock().map(|s| s.notifications).unwrap_or(false) {
+        return;
+    }
     // D-Bus round trip; keep it off the engine thread.
     std::thread::spawn(move || {
         let shown = notify_rust::Notification::new()
@@ -268,6 +272,8 @@ fn notify(notice: micdeck_core::notify::Notice) {
             .summary(&notice.title)
             .body(&notice.body)
             .icon("micdeck")
+            // Shown once, not kept in the panel's notification list.
+            .hint(notify_rust::Hint::Transient(true))
             .show();
         if let Err(e) = shown {
             log::warn!("notification not shown: {e}");
@@ -375,7 +381,7 @@ fn dock_dictation(app: AppHandle, event: micdeck_core::dock::DockEvent) {
                 log::warn!("dictation {action:?} failed: {message}");
                 DICTATING.store(false, Ordering::SeqCst);
                 set_dictation_phase(&app, DictationPhase::Idle);
-                notify(micdeck_core::notify::Notice { title: "Diktat nicht ausgelöst".into(), body: message });
+                notify(&app, micdeck_core::notify::Notice { title: "Diktat nicht ausgelöst".into(), body: message });
             }
         }
     });
@@ -422,7 +428,7 @@ fn main() {
                     Output::Snapshot(snapshot) => {
                         let v = &snapshot.verdict;
                         let muted = snapshot.audio.source.as_ref().and_then(|s| s.muted);
-                        check_mute_watch(muted);
+                        check_mute_watch(&handle, muted);
                         check_release(&handle, &snapshot);
                         let tray_text = (v.level, v.title.clone(), v.detail.clone(), muted);
                         let mut last = last_tray.lock().unwrap_or_else(|p| p.into_inner());
@@ -447,10 +453,7 @@ fn main() {
                         Ok(())
                     }
                     Output::Notice(notice) => {
-                        let enabled = handle.state::<SharedSettings>().lock().map(|s| s.notifications).unwrap_or(true);
-                        if enabled {
-                            notify(notice);
-                        }
+                        notify(&handle, notice);
                         Ok(())
                     }
                 };

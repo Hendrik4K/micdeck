@@ -238,7 +238,7 @@
   });
 </script>
 
-<div class="shell">
+<div class="shell" style:--state={snapshot?.audio.source?.muted === true ? "var(--error)" : "var(--accent)"}>
   <main bind:this={mainEl} style:--sheet={page === "overview" ? "var(--surface)" : "var(--sheet-sub)"}>
     {#if frame}
       <div class="frame" style:top="{frame.top}px" style:height="{frame.height}px"></div>

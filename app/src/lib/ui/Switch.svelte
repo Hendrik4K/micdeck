@@ -34,7 +34,7 @@
     transition: background 160ms;
   }
   .switch.on {
-    background: var(--accent);
+    background: var(--state, var(--accent));
     box-shadow: 0 0 14px rgba(47, 227, 138, 0.25);
   }
   .knob {
@@ -58,6 +58,6 @@
     box-shadow: inset 0 0 0 1px var(--line);
   }
   .switch.on:disabled {
-    background: color-mix(in srgb, var(--accent) 45%, var(--surface-3));
+    background: color-mix(in srgb, var(--state, var(--accent)) 45%, var(--surface-3));
   }
 </style>

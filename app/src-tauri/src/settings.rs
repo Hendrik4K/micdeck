@@ -12,7 +12,8 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct Settings {
-    /// Desktop notification when the microphone stops being ready.
+    /// Desktop notification when the microphone stops being ready. Off unless
+    /// the user switches it on.
     pub notifications: bool,
     /// Taking transmitter 1 out of its charging case starts dictation in the
     /// Claude app; putting it back stops it and sends the message. Off unless
@@ -25,7 +26,7 @@ pub struct Settings {
 
 impl Default for Settings {
     fn default() -> Self {
-        Self { notifications: true, dock_dictation: false, dock_mute: false }
+        Self { notifications: false, dock_dictation: false, dock_mute: false }
     }
 }
 
@@ -177,8 +178,8 @@ mod tests {
     #[test]
     fn unknown_or_missing_fields_fall_back_to_defaults() {
         let s: Settings = serde_json::from_str("{}").unwrap();
-        assert!(s.notifications);
-        let s: Settings = serde_json::from_str(r#"{"notifications":false,"future":1}"#).unwrap();
         assert!(!s.notifications);
+        let s: Settings = serde_json::from_str(r#"{"notifications":true,"future":1}"#).unwrap();
+        assert!(s.notifications);
     }
 }

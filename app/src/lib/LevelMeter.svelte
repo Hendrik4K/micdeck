@@ -9,10 +9,9 @@
     labels,
     source = null,
     recording = [],
-    muted = null,
-    large = false,
-    onToggleMute,
-    children,
+    testable = false,
+    side,
+    onTest,
   }: {
     frame: LevelFrame | null;
     meter: MeterState;
@@ -22,12 +21,12 @@
     source?: string | null;
     /** Other programs recording from it right now. */
     recording?: string[];
-    /** Mute state of the DJI input; `null` when there is no input to mute. */
-    muted?: boolean | null;
-    /** The audio page: taller bars. */
-    large?: boolean;
-    onToggleMute?: () => void;
-    children?: Snippet;
+    /** A microphone test can run (real DJI input, not demo data). */
+    testable?: boolean;
+    /** Right of the bars, centred on them (the mute button). */
+    side?: Snippet;
+    /** Opens the microphone test; `undefined` hides the button. */
+    onTest?: () => void;
   } = $props();
 
   const MIN_DB = -60;
@@ -87,6 +86,13 @@
   const readout = (db: number | undefined) =>
     db === undefined || db <= MIN_DB ? "−∞" : db.toFixed(1).replace("-", "−");
   const signed = (db: number) => (db < 0 ? `−${-db}` : `${db}`);
+  /** Short enough to sit at the start of the bars, left of the −48 mark. */
+  const SHORT: Record<string, string> = { "Normale Sprechlautstärke": "Normal" };
+  const loudness = $derived.by(() => {
+    if (signal.status === "present") return signal.loudness ? (SHORT[signal.loudness] ?? signal.loudness) : null;
+    if (signal.status === "silent") return "Stille";
+    return null;
+  });
 
   const overlay = $derived.by(() => {
     switch (meter.kind) {
@@ -102,7 +108,7 @@
   });
 </script>
 
-<section class="card meter" class:large>
+<section class="card meter">
   <header class="card-head">
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h1.5M6.5 8.5v7M10 5v14M13.5 8v8M17 10v4M20.5 12H21" /></svg>
     <div class="grow">
@@ -116,65 +122,56 @@
         </span>
       {/if}
       {#if frame?.simulated}<span class="sim">Simuliert</span>{/if}
-      {#if muted !== null}
-        <button
-          class="mute"
-          class:on={muted}
-          onclick={onToggleMute}
-          title={muted
-            ? "Stummschaltung aufheben"
-            : "Stummschalten – auch am Empfänger selbst, kein Programm bekommt dann Ton"}
-        >
-          <svg viewBox="0 0 16 16" aria-hidden="true">
-            <rect x="5.5" y="1.5" width="5" height="8" rx="2.5" />
-            <path d="M3.5 7.5a4.5 4.5 0 0 0 9 0M8 12v2.5" />
-            {#if muted}<path class="slash" d="M2 2l12 12" />{/if}
-          </svg>
-          {muted ? "Stumm" : "Mikro an"}
-        </button>
-      {/if}
     </div>
   </header>
 
-  <div class="rows" class:idle={!running}>
-    {#each Array.from({ length: channels }, (_, i) => i) as c (c)}
-      <div class="row">
-        <span class="name">{labels[c] ?? `Kanal ${c + 1}`}</span>
-        <div class="track">
-          <div
-            class="fill"
-            style:clip-path="inset(0 {(1 - fraction(shown[c] ?? FLOOR_DBFS)) * 100}% 0 0 round 999px)"
-          ></div>
-          <div class="hold" style:left="{fraction(held[c] ?? FLOOR_DBFS) * 100}%"></div>
+  <div class="body">
+    <div class="rows" class:idle={!running}>
+      {#each Array.from({ length: channels }, (_, i) => i) as c (c)}
+        <div class="row">
+          <span class="name">{labels[c] ?? `Kanal ${c + 1}`}</span>
+          <div class="track" title="Spitzenpegel, gemessen am PC">
+            <div
+              class="fill"
+              style:clip-path="inset(0 {(1 - fraction(shown[c] ?? FLOOR_DBFS)) * 100}% 0 0 round 999px)"
+            ></div>
+            <div class="hold" style:left="{fraction(held[c] ?? FLOOR_DBFS) * 100}%"></div>
+          </div>
+          <span class="db num">{readout(held[c])}<small>dBFS</small></span>
         </div>
-        <span class="db num">{readout(held[c])}<small>dBFS</small></span>
-      </div>
-    {/each}
-    <div class="scale" aria-hidden="true">
-      {#each TICKS as t (t)}
-        <span style:left="{fraction(t) * 100}%">{t === 0 ? "0" : String(t).replace("-", "−")}</span>
       {/each}
+      {#if overlay}
+        <div class="overlay">{overlay}</div>
+      {/if}
     </div>
-    {#if overlay}
-      <div class="overlay">{overlay}</div>
+    {#if side}
+      <div class="side">{@render side()}</div>
     {/if}
+    <!-- Below the bars: how loud on the left, the scale, the average on the right. -->
+    <div class="row scale-row" title="Gleitender Mittelwert der letzten Sekunden">
+      <span></span>
+      <div class="scale" aria-hidden="true">
+        {#if loudness}
+          <span class="loud" class:warn={signal.status === "silent"}>{loudness}</span>
+        {/if}
+        {#each TICKS as t (t)}
+          <span class="tick" style:left="{fraction(t) * 100}%">{t === 0 ? "0" : String(t).replace("-", "−")}</span>
+        {/each}
+      </div>
+      <span class="avg num">
+        {#if signal.status === "present" && signal.loudnessDbfs !== null}Ø {signed(signal.loudnessDbfs)} dB{/if}
+      </span>
+    </div>
   </div>
 
-  <footer>
-    {#if signal.status === "present" && signal.loudness}
-      <span class="state ok" title="Gleitender Mittelwert der letzten Sekunden">
-        {signal.loudness}{signal.loudnessDbfs !== null ? ` · Ø ${signed(signal.loudnessDbfs)} dB` : ""}
-      </span>
-    {:else if signal.status === "present"}
-      <span class="state ok">Ton kommt an</span>
-    {:else if signal.status === "silent"}
-      <span class="state warn">Nur digitale Stille</span>
-    {:else}
-      <span class="state">Kein Messwert</span>
-    {/if}
-    <span class="unit">Spitzenpegel · gemessen am PC</span>
-  </footer>
-  {@render children?.()}
+  {#if onTest}
+    <footer>
+      <button class="btn test" disabled={!testable} onclick={onTest} title="Sprechen, anhören, nachjustieren">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6" /><circle class="dot" cx="8" cy="8" r="2.6" /></svg>
+        Mikrofon testen
+      </button>
+    </footer>
+  {/if}
 </section>
 
 <style>
@@ -199,7 +196,7 @@
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    max-width: 180px;
+    max-width: 220px;
     font-size: 12px;
     font-weight: 600;
     color: var(--error);
@@ -220,48 +217,28 @@
       opacity: 0.3;
     }
   }
-  .mute {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font: inherit;
-    font-size: 12.5px;
-    font-weight: 600;
-    padding: 4px 11px 4px 9px;
-    border-radius: 8px;
-    border: 1px solid var(--line-2);
-    background: transparent;
-    color: var(--text-2);
-    cursor: pointer;
-    transition: background 120ms, color 120ms, border-color 120ms;
-  }
-  .mute:hover {
-    color: var(--text);
-    border-color: var(--text-3);
-  }
-  .mute.on {
-    color: #1b1503;
-    background: var(--warn);
-    border-color: var(--warn);
-  }
-  .mute svg {
-    width: 15px;
-    height: 15px;
-    fill: none;
-    stroke: currentColor;
-    stroke-width: 1.6;
-    stroke-linecap: round;
-  }
 
+  .body {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: 22px;
+    row-gap: 8px;
+    align-items: center;
+  }
+  .side {
+    grid-row: 1;
+    grid-column: 2;
+    display: grid;
+    place-items: center;
+  }
   .rows {
     position: relative;
     display: grid;
     gap: 16px;
-    padding-bottom: 24px;
   }
   .row {
     display: grid;
-    grid-template-columns: 96px 1fr 104px;
+    grid-template-columns: 82px 1fr 100px;
     gap: 14px;
     align-items: center;
   }
@@ -279,9 +256,6 @@
     border-radius: 999px;
     background: var(--surface-3);
     box-shadow: inset 0 0 0 1px var(--line);
-  }
-  .large .track {
-    height: 30px;
   }
   .fill {
     position: absolute;
@@ -322,25 +296,42 @@
     font-weight: 500;
     color: var(--text-2);
   }
-  .scale {
-    position: absolute;
-    left: 110px;
-    right: 118px;
-    bottom: 0;
-    height: 16px;
+  .scale-row {
+    grid-column: 1;
   }
-  .scale span {
-    position: absolute;
-    transform: translateX(-50%);
+  .scale {
+    position: relative;
+    height: 16px;
     font-size: 12px;
     color: var(--text-3);
+  }
+  .tick {
+    position: absolute;
+    transform: translateX(-50%);
+  }
+  .loud {
+    position: absolute;
+    left: 0;
+    font-weight: 650;
+    color: var(--state);
+    white-space: nowrap;
+  }
+  .loud.warn {
+    color: var(--warn);
+  }
+  .avg {
+    text-align: center;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--state);
+    white-space: nowrap;
   }
   .idle .track {
     opacity: 0.35;
   }
   .overlay {
     position: absolute;
-    inset: 0 0 22px;
+    inset: -4px 0;
     display: grid;
     place-items: center;
     color: var(--text-2);
@@ -349,18 +340,20 @@
     background: color-mix(in srgb, var(--surface) 60%, transparent);
     border-radius: var(--radius-sm);
   }
+  /* Bottom right, centred under the dB readouts and the mute button
+     (100 px column + 22 px gap + 86 px button). */
   footer {
-    margin-top: 12px;
+    margin-top: auto;
+    padding-top: 18px;
     display: flex;
-    justify-content: space-between;
-    gap: 12px;
-    font-size: 12.5px;
-    color: var(--text-3);
+    justify-content: flex-end;
   }
-  .state.ok {
-    color: var(--ok);
+  .test {
+    width: 208px;
+    justify-content: center;
   }
-  .state.warn {
-    color: var(--warn);
+  .test svg .dot {
+    fill: var(--error);
+    stroke: none;
   }
 </style>

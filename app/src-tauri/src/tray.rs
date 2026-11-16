@@ -174,7 +174,7 @@ impl Tray for MicTray {
             .state::<SharedSettings>()
             .lock()
             .map(|s| (s.notifications, s.dock_dictation, s.dock_mute))
-            .unwrap_or((true, false, false));
+            .unwrap_or((false, false, false));
         let autostart = settings::autostart_enabled();
         let autostart_label = if settings::AUTOSTART_AVAILABLE {
             "Beim Anmelden starten"

@@ -1,6 +1,9 @@
 // Browser-only preview for UI work (`pnpm dev` opened in a normal browser).
 // Never used inside the app; every value here is fake and labelled as such.
-// Pick a state with the URL hash: #ready (default), #no-tx, #unplugged, #no-permission.
+// Pick a state with the URL hash: #ready (default), #no-tx, #unplugged, #no-permission,
+// #charging (transmitter 1 in its case), #test (microphone test recording), #muted.
+// `?images=<url>` loads receiver.webp and transmitter.webp from there instead
+// of the built-in silhouettes.
 
 import type { Backend } from "./api";
 import type { AppSettings, Check, LevelFrame, SettingView, Snapshot, TransmitterView, WriteLogEntry } from "./types";
@@ -50,12 +53,13 @@ const values: Record<string, string> = {
 };
 const log: WriteLogEntry[] = [];
 let pending: { id: string; value: string } | null = null;
+let muted = false;
 let appSettings: AppSettings = {
-  notifications: true, dockDictation: true, dockMute: false, autostart: false, autostartAvailable: true,
+  notifications: false, dockDictation: true, dockMute: false, autostart: false, autostartAvailable: true,
 };
 
 function settingViews(kind: string): SettingView[] {
-  const live = kind === "ready" || kind === "no-tx";
+  const live = kind === "ready" || kind === "no-tx" || kind === "charging" || kind === "test" || kind === "muted";
   return SPECS.map((spec) => {
     const value = !live || (spec.needsTx && kind === "no-tx") ? null : values[spec.id];
     let locked = spec.locked;
@@ -113,8 +117,8 @@ function snapshot(kind: string): Snapshot {
     firmware: kind === "no-tx" ? null : "02.03.17.00",
     battery: kind === "no-tx" || kind === "no-permission"
       ? null
-      : { gauge, bars: 7 - gauge, label: gauge <= 2 ? "hoch" : "mittel", charging: false, low: false, critical: false },
-    charging: null,
+      : { gauge, bars: 7 - gauge, label: gauge <= 2 ? "hoch" : "mittel", charging: kind === "charging" && unit === 1, low: false, critical: false },
+    charging: kind === "charging" && unit === 1 ? true : null,
     radioLevel: kind === "no-tx" ? null : 0x30,
   });
   const verdict =
@@ -151,7 +155,7 @@ function snapshot(kind: string): Snapshot {
       source: present
         ? {
             id: 1, nodeName: NODE, description: "DJI Mic Mini (Vorschau)", usbVendorId: 0x2ca3, usbProductId: 0x4011,
-            alsaCard: 5, state: "running", muted: false, volume: 1, channels: 2, captureApps: ["Firefox"],
+            alsaCard: 5, state: "running", muted: muted || kind === "muted", volume: 1, channels: 2, captureApps: ["Firefox"],
           }
         : null,
       defaultInput: present ? { nodeName: NODE, description: "DJI Mic Mini (Vorschau)", isDji: true } : null,
@@ -165,7 +169,7 @@ function snapshot(kind: string): Snapshot {
         silentForMs: null,
         clippedRecently: false,
       },
-      micTest: { kind: "idle" },
+      micTest: kind === "test" ? { kind: "recording", maxMs: 15000 } : { kind: "idle" },
     },
     meter: present ? { kind: "running", nodeName: NODE, channels: 2, rate: 48000 } : { kind: "off" },
     usbWatchError: null,
@@ -218,7 +222,10 @@ export function previewBackend(): Backend {
       return () => window.clearInterval(timer);
     },
     setMeterWanted: async () => {},
-    setMuted: async () => {},
+    setMuted: async (m) => {
+      muted = m;
+      changed();
+    },
     startMicTest: async () => {},
     stopMicTest: async () => {},
     // Simulates a receiver that acknowledges and applies every change.
@@ -247,6 +254,9 @@ export function previewBackend(): Backend {
     },
     onAppSettings: async () => () => {},
     startPage: async () => null,
-    deviceImages: async () => ({ receiver: null, transmitter: null }),
+    deviceImages: async () => {
+      const base = new URLSearchParams(location.search).get("images");
+      return base ? { receiver: `${base}/receiver.webp`, transmitter: `${base}/transmitter.webp` } : { receiver: null, transmitter: null };
+    },
   };
 }
