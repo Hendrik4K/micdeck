@@ -2,7 +2,7 @@
   import type { SettingView, WriteLogEntry } from "./types";
   import SettingRow from "./SettingRow.svelte";
   import Segmented from "./ui/Segmented.svelte";
-  import { slide } from "svelte/transition";
+  import { fade } from "svelte/transition";
   import { anyPending, byId, errorFor } from "./settings";
 
   let {
@@ -70,13 +70,14 @@
     {#if powerOn}
       <div class="nc">
         <span class="label">{level.label}</span>
-        <div transition:slide={{ duration: 220 }}>
+        <div in:fade={{ duration: 200 }}>
           <Segmented
             options={level.options}
             value={level.pending ?? level.value}
             disabled={level.locked !== null}
             tone="nc"
             stretch
+            small
             label={level.label}
             onchange={(value) => !busy && onchange(level.id, value)}
           />
@@ -111,10 +112,15 @@
   .rows {
     flex: 1;
   }
+  /* Same height with and without the selector, so switching noise
+     reduction on or off never moves the buttons below. */
   .nc {
+    box-sizing: border-box;
+    height: 80px;
     display: grid;
-    gap: 10px;
-    padding: 12px 0 4px;
+    align-content: start;
+    gap: 7px;
+    padding: 12px 0 0;
     border-top: 1px solid var(--line);
   }
   .wake {
@@ -126,7 +132,6 @@
     background: none;
     border: 0;
     border-top: 1px solid var(--line);
-    padding: 12px 0;
     cursor: pointer;
     border-radius: 0;
   }

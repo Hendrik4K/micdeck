@@ -7,6 +7,7 @@
     disabled = false,
     tone = "plain",
     stretch = false,
+    small = false,
     label,
     onchange,
   }: {
@@ -17,6 +18,8 @@
     tone?: "plain" | "nc";
     /** Fill the available width, options equally wide. */
     stretch?: boolean;
+    /** Lower, for the start page. */
+    small?: boolean;
     label: string;
     onchange?: (value: string) => void;
   } = $props();
@@ -28,6 +31,7 @@
 <div
   class="seg tone-{tone}"
   class:stretch
+  class:small
   role="radiogroup"
   aria-label={label}
   class:disabled
@@ -74,6 +78,19 @@
   .stretch {
     display: grid;
     width: 100%;
+  }
+  .small {
+    --pad: 3px;
+    --gap: 3px;
+    border-radius: 10px;
+  }
+  .small button {
+    font-size: 13px;
+    padding: 4px 10px;
+    border-radius: 8px;
+  }
+  .small .thumb {
+    border-radius: 8px;
   }
   .thumb {
     position: absolute;
