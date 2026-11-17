@@ -175,14 +175,13 @@ export interface WriteLogEntry {
 
 /** MicDeck's own settings (app/src-tauri/src/settings.rs). */
 export interface AppSettings {
-  notifications: boolean;
   dockDictation: boolean;
   dockMute: boolean;
   autostart: boolean;
   autostartAvailable: boolean;
 }
 
-export type AppSettingName = "notifications" | "dockDictation" | "dockMute" | "autostart";
+export type AppSettingName = "dockDictation" | "dockMute" | "autostart";
 
 /** The user's own device pictures as data URLs (~/.config/micdeck/devices/); `null` = built-in. */
 export interface DeviceImages {

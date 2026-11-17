@@ -12,9 +12,6 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct Settings {
-    /// Desktop notification when the microphone stops being ready. Off unless
-    /// the user switches it on.
-    pub notifications: bool,
     /// Taking transmitter 1 out of its charging case starts dictation in the
     /// Claude app; putting it back stops it and sends the message. Off unless
     /// the user switches it on.
@@ -26,7 +23,7 @@ pub struct Settings {
 
 impl Default for Settings {
     fn default() -> Self {
-        Self { notifications: false, dock_dictation: false, dock_mute: false }
+        Self { dock_dictation: false, dock_mute: false }
     }
 }
 
@@ -34,7 +31,6 @@ impl Default for Settings {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum AppSetting {
-    Notifications,
     DockDictation,
     DockMute,
     Autostart,
@@ -44,7 +40,6 @@ pub enum AppSetting {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppSettingsView {
-    pub notifications: bool,
     pub dock_dictation: bool,
     pub dock_mute: bool,
     pub autostart: bool,
@@ -54,7 +49,6 @@ pub struct AppSettingsView {
 impl Settings {
     pub fn view(&self) -> AppSettingsView {
         AppSettingsView {
-            notifications: self.notifications,
             dock_dictation: self.dock_dictation,
             dock_mute: self.dock_mute,
             autostart: autostart_enabled(),
@@ -65,7 +59,6 @@ impl Settings {
     /// Sets `setting` (not autostart, which is a file of its own).
     pub fn set(&mut self, setting: AppSetting, on: bool) {
         match setting {
-            AppSetting::Notifications => self.notifications = on,
             AppSetting::DockDictation => self.dock_dictation = on,
             AppSetting::DockMute => self.dock_mute = on,
             AppSetting::Autostart => {}
@@ -178,8 +171,9 @@ mod tests {
     #[test]
     fn unknown_or_missing_fields_fall_back_to_defaults() {
         let s: Settings = serde_json::from_str("{}").unwrap();
-        assert!(!s.notifications);
-        let s: Settings = serde_json::from_str(r#"{"notifications":true,"future":1}"#).unwrap();
-        assert!(s.notifications);
+        assert!(!s.dock_mute);
+        // "notifications" is from older versions and is ignored now.
+        let s: Settings = serde_json::from_str(r#"{"notifications":true,"dockMute":true,"future":1}"#).unwrap();
+        assert!(s.dock_mute);
     }
 }

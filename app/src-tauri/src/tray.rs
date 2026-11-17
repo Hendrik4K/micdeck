@@ -22,6 +22,21 @@ pub struct MicTray {
     pub dictation: DictationPhase,
     /// The DJI input is muted (`None`: no input to mute).
     pub muted: Option<bool>,
+    /// Live level for the tooltip (see [`level_text`]); `None` while nothing
+    /// is measured.
+    pub level_text: Option<String>,
+}
+
+/// The peak level as a small bar for the tooltip, e.g. `▮▮▮▮▮▮▯▯▯▯▯▯  −31 dBFS`.
+pub fn level_text(dbfs: f32) -> String {
+    const CELLS: usize = 12;
+    const FLOOR: f32 = -60.0;
+    if !dbfs.is_finite() || dbfs <= FLOOR {
+        return format!("{}  −∞ dBFS", "▯".repeat(CELLS));
+    }
+    let filled = (((dbfs - FLOOR) / -FLOOR) * CELLS as f32).round().clamp(0.0, CELLS as f32) as usize;
+    let value = (dbfs.round() as i32).to_string().replace('-', "−");
+    format!("{}{}  {value} dBFS", "▮".repeat(filled), "▯".repeat(CELLS - filled))
 }
 
 /// What the icon shows for the charging-case dictation.
@@ -154,7 +169,15 @@ impl Tray for MicTray {
 
     fn tool_tip(&self) -> ToolTip {
         let (title, description) = match self.dictation {
-            DictationPhase::Idle => (format!("MicDeck – {}", self.title), self.detail.clone()),
+            DictationPhase::Idle => {
+                // The live level answers "is sound coming in?" at a glance.
+                let description = match (self.muted, &self.level_text) {
+                    (Some(true), _) => "Stummgeschaltet".to_string(),
+                    (_, Some(level)) => level.clone(),
+                    _ => self.detail.clone(),
+                };
+                (format!("MicDeck – {}", self.title), description)
+            }
             DictationPhase::Recording { .. } => {
                 ("MicDeck – Diktat läuft".into(), "Sender zurück ins Ladecase legen, um abzuschicken.".into())
             }
@@ -169,12 +192,12 @@ impl Tray for MicTray {
     }
 
     fn menu(&self) -> Vec<MenuItem<Self>> {
-        let (notifications, dock_dictation, dock_mute) = self
+        let (dock_dictation, dock_mute) = self
             .app
             .state::<SharedSettings>()
             .lock()
-            .map(|s| (s.notifications, s.dock_dictation, s.dock_mute))
-            .unwrap_or((false, false, false));
+            .map(|s| (s.dock_dictation, s.dock_mute))
+            .unwrap_or((false, false));
         let autostart = settings::autostart_enabled();
         let autostart_label = if settings::AUTOSTART_AVAILABLE {
             "Beim Anmelden starten"
@@ -200,15 +223,6 @@ impl Tray for MicTray {
             }
             .into(),
             MenuItem::Separator,
-            CheckmarkItem {
-                label: "Benachrichtigungen".into(),
-                checked: notifications,
-                activate: Box::new(move |t: &mut Self| {
-                    crate::change_app_setting(&t.app, AppSetting::Notifications, !notifications, true)
-                }),
-                ..Default::default()
-            }
-            .into(),
             CheckmarkItem {
                 label: "Diktat über Ladecase (Claude)".into(),
                 checked: dock_dictation,
@@ -251,6 +265,13 @@ impl Tray for MicTray {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn level_text_is_a_bar_with_the_value() {
+        assert_eq!(level_text(-120.0), "▯▯▯▯▯▯▯▯▯▯▯▯  −∞ dBFS");
+        assert_eq!(level_text(-30.0), "▮▮▮▮▮▮▯▯▯▯▯▯  −30 dBFS");
+        assert_eq!(level_text(0.0), "▮▮▮▮▮▮▮▮▮▮▮▮  0 dBFS");
+    }
 
     #[test]
     fn every_icon_has_every_size() {

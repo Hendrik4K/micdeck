@@ -20,6 +20,38 @@ use tauri::{AppHandle, Emitter, Manager, WindowEvent};
 
 type SharedSettings = Mutex<settings::Settings>;
 
+/// With a panel icon the level is measured all the time, for its tooltip.
+static TRAY_LEVEL: AtomicBool = AtomicBool::new(false);
+
+/// Peak since the tooltip was last refreshed (at most every 250 ms).
+struct TrayMeter {
+    since: Option<Instant>,
+    peak: f32,
+    shown: String,
+}
+static TRAY_METER: Mutex<TrayMeter> = Mutex::new(TrayMeter { since: None, peak: f32::NEG_INFINITY, shown: String::new() });
+
+fn tray_level(app: &AppHandle, frame: &micdeck_core::LevelFrame) {
+    let peak = frame.peak_dbfs.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+    let mut meter = TRAY_METER.lock().unwrap_or_else(|p| p.into_inner());
+    meter.peak = meter.peak.max(peak);
+    let since = *meter.since.get_or_insert_with(Instant::now);
+    if since.elapsed() < Duration::from_millis(250) {
+        return;
+    }
+    let text = tray::level_text(meter.peak);
+    meter.since = Some(Instant::now());
+    meter.peak = f32::NEG_INFINITY;
+    if text == meter.shown {
+        return;
+    }
+    meter.shown = text.clone();
+    drop(meter);
+    if let Some(tray) = app.try_state::<TrayState>().and_then(|t| t.0.clone()) {
+        tray.update(|t| t.level_text = Some(text));
+    }
+}
+
 /// The panel icon, if the desktop offers a tray (StatusNotifierWatcher).
 struct TrayState(Option<Handle<tray::MicTray>>);
 
@@ -160,7 +192,7 @@ fn transmitter_docked(snapshot: &Snapshot) -> bool {
 
 /// Called with every snapshot. While the input is muted because transmitter 1
 /// sits in its case ("Im Ladecase stumm"), a program that starts recording
-/// gets the microphone without asking; a notification says which one, and
+/// gets the microphone without asking (logged, no desktop notification), and
 /// MicDeck mutes again once no program records any more.
 fn check_release(app: &AppHandle, snapshot: &Snapshot) {
     let Some(source) = &snapshot.audio.source else { return };
@@ -181,10 +213,6 @@ fn check_release(app: &AppHandle, snapshot: &Snapshot) {
             let apps = source.capture_apps.join(", ");
             log::info!("released the microphone for {apps}");
             apply_mute(app, false);
-            notify(app, micdeck_core::notify::Notice {
-                title: "Mikrofon kurz freigegeben".into(),
-                body: format!("{apps} nimmt auf. Danach schaltet MicDeck wieder stumm."),
-            });
         }
         // Taken out of the case: from now on the case logic decides.
         Some(_) if !docked => *release = None,
@@ -215,26 +243,44 @@ fn check_release(app: &AppHandle, snapshot: &Snapshot) {
 
 /// Called with every snapshot: arms the watch once the mute took effect and
 /// reports when someone else lifts it.
-fn check_mute_watch(app: &AppHandle, muted: Option<bool>) {
+fn check_mute_watch(muted: Option<bool>) {
     let mut watch = MUTE_WATCH.lock().unwrap_or_else(|p| p.into_inner());
     *watch = match (*watch, muted) {
         (MuteWatch::Requested(_), Some(true)) => MuteWatch::Armed,
         (MuteWatch::Requested(at), _) if at.elapsed() > Duration::from_secs(3) => MuteWatch::Off,
         (MuteWatch::Armed, Some(false)) => {
             log::warn!("mute lifted by another program");
-            notify(app, micdeck_core::notify::Notice {
-                title: "Stummschaltung aufgehoben".into(),
-                body: "Ein anderes Programm hat das DJI-Mikrofon wieder eingeschaltet.".into(),
-            });
             MuteWatch::Off
         }
         (other, _) => other,
     };
 }
 
+/// The window ends below the page: the frontend reports how tall the page is
+/// (logical px), the width stays as the user set it. Never taller than the
+/// screen; a maximized window is left alone.
+#[tauri::command]
+fn fit_height(window: tauri::WebviewWindow, height: f64) {
+    if window.is_maximized().unwrap_or(false) || !height.is_finite() {
+        return;
+    }
+    let scale = window.scale_factor().unwrap_or(1.0);
+    let Ok(size) = window.inner_size() else { return };
+    let (width, current) = (f64::from(size.width) / scale, f64::from(size.height) / scale);
+    let mut wanted = height.max(300.0);
+    if let Ok(Some(monitor)) = window.current_monitor() {
+        // Leave room for the title bar and the panel.
+        let screen = f64::from(monitor.size().height) / monitor.scale_factor();
+        wanted = wanted.min(screen - 90.0);
+    }
+    if (wanted - current).abs() >= 2.0 {
+        let _ = window.set_size(tauri::LogicalSize::new(width, wanted.round()));
+    }
+}
+
 #[tauri::command]
 fn set_meter_wanted(wanted: bool, engine: tauri::State<'_, Engine>) {
-    engine.set_meter_wanted(wanted);
+    engine.set_meter_wanted(wanted || TRAY_LEVEL.load(Ordering::SeqCst));
 }
 
 pub(crate) fn show_window(app: &AppHandle) {
@@ -246,13 +292,13 @@ pub(crate) fn show_window(app: &AppHandle) {
     app.state::<Engine>().set_meter_wanted(true);
 }
 
-/// Hide to the panel. The level meter stops: nothing is measured while
-/// nobody looks.
+/// Hide to the panel. Without a panel icon the level meter stops: nothing is
+/// measured while nobody looks. With one it keeps running for the tooltip.
 pub(crate) fn hide_window(app: &AppHandle) {
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.hide();
     }
-    app.state::<Engine>().set_meter_wanted(false);
+    app.state::<Engine>().set_meter_wanted(TRAY_LEVEL.load(Ordering::SeqCst));
 }
 
 pub(crate) fn toggle_window(app: &AppHandle) {
@@ -260,26 +306,6 @@ pub(crate) fn toggle_window(app: &AppHandle) {
     if visible { hide_window(app) } else { show_window(app) }
 }
 
-/// A desktop notification, only if the user switched them on (off by default).
-fn notify(app: &AppHandle, notice: micdeck_core::notify::Notice) {
-    if !app.state::<SharedSettings>().lock().map(|s| s.notifications).unwrap_or(false) {
-        return;
-    }
-    // D-Bus round trip; keep it off the engine thread.
-    std::thread::spawn(move || {
-        let shown = notify_rust::Notification::new()
-            .appname("MicDeck")
-            .summary(&notice.title)
-            .body(&notice.body)
-            .icon("micdeck")
-            // Shown once, not kept in the panel's notification list.
-            .hint(notify_rust::Hint::Transient(true))
-            .show();
-        if let Err(e) = shown {
-            log::warn!("notification not shown: {e}");
-        }
-    });
-}
 
 /// MicDeck started a dictation that hasn't been stopped yet.
 static DICTATING: AtomicBool = AtomicBool::new(false);
@@ -381,7 +407,6 @@ fn dock_dictation(app: AppHandle, event: micdeck_core::dock::DockEvent) {
                 log::warn!("dictation {action:?} failed: {message}");
                 DICTATING.store(false, Ordering::SeqCst);
                 set_dictation_phase(&app, DictationPhase::Idle);
-                notify(&app, micdeck_core::notify::Notice { title: "Diktat nicht ausgelöst".into(), body: message });
             }
         }
     });
@@ -428,32 +453,38 @@ fn main() {
                     Output::Snapshot(snapshot) => {
                         let v = &snapshot.verdict;
                         let muted = snapshot.audio.source.as_ref().and_then(|s| s.muted);
-                        check_mute_watch(&handle, muted);
+                        check_mute_watch(muted);
                         check_release(&handle, &snapshot);
-                        let tray_text = (v.level, v.title.clone(), v.detail.clone(), muted);
+                        let measuring = matches!(snapshot.meter, micdeck_core::MeterState::Running { .. });
+                        let tray_text = (v.level, v.title.clone(), v.detail.clone(), muted, measuring);
                         let mut last = last_tray.lock().unwrap_or_else(|p| p.into_inner());
                         if last.as_ref() != Some(&tray_text) {
                             if let Some(tray) = handle.try_state::<TrayState>().and_then(|t| t.0.clone()) {
-                                let (level, title, detail, muted) = tray_text.clone();
+                                let (level, title, detail, muted, measuring) = tray_text.clone();
                                 tray.update(|t| {
                                     t.level = level;
                                     t.title = title;
                                     t.detail = detail;
                                     t.muted = muted;
+                                    if !measuring {
+                                        t.level_text = None;
+                                    }
                                 });
+                                if !measuring {
+                                    TRAY_METER.lock().unwrap_or_else(|p| p.into_inner()).shown.clear();
+                                }
                             }
                             *last = Some(tray_text);
                         }
                         drop(last);
                         handle.emit("micdeck:snapshot", snapshot)
                     }
-                    Output::Level(frame) => handle.emit("micdeck:level", frame),
+                    Output::Level(frame) => {
+                        tray_level(&handle, &frame);
+                        handle.emit("micdeck:level", frame)
+                    }
                     Output::Dock(event) => {
                         on_dock(&handle, event);
-                        Ok(())
-                    }
-                    Output::Notice(notice) => {
-                        notify(&handle, notice);
                         Ok(())
                     }
                 };
@@ -471,6 +502,7 @@ fn main() {
                 detail: first.detail,
                 dictation: tray::DictationPhase::Idle,
                 muted: None,
+                level_text: None,
             }
             .spawn();
             let tray = match tray {
@@ -482,6 +514,10 @@ fn main() {
             };
             let has_tray = tray.is_some();
             app.manage(TrayState(tray));
+            if has_tray {
+                TRAY_LEVEL.store(true, Ordering::SeqCst);
+                app.state::<Engine>().set_meter_wanted(true);
+            }
 
             // Without a panel icon the window is the only way back in.
             if !start_hidden || !has_tray {
@@ -501,6 +537,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             get_snapshot,
             set_meter_wanted,
+            fit_height,
             set_muted,
             start_mic_test,
             stop_mic_test,

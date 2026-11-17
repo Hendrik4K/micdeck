@@ -6,6 +6,8 @@ export interface Backend {
   onLevel(callback: (frame: LevelFrame) => void): Promise<() => void>;
   /** Tell the backend whether a level meter is visible; it only measures then. */
   setMeterWanted(wanted: boolean): Promise<void>;
+  /** Makes the window as tall as the page (logical px), width unchanged. */
+  fitHeight(height: number): Promise<void>;
   /** Mute or unmute the DJI input (in PipeWire and on the receiver itself). */
   setMuted(muted: boolean): Promise<void>;
   /** Record 5 s into memory, play them back once, drop them. */
@@ -33,6 +35,7 @@ async function tauriBackend(): Promise<Backend> {
     onSnapshot: (cb) => listen<Snapshot>("micdeck:snapshot", (e) => cb(e.payload)),
     onLevel: (cb) => listen<LevelFrame>("micdeck:level", (e) => cb(e.payload)),
     setMeterWanted: (wanted) => invoke("set_meter_wanted", { wanted }),
+    fitHeight: (height) => invoke("fit_height", { height }),
     setMuted: (muted) => invoke("set_muted", { muted }),
     startMicTest: () => invoke("start_mic_test"),
     stopMicTest: () => invoke("stop_mic_test"),

@@ -55,7 +55,7 @@ const log: WriteLogEntry[] = [];
 let pending: { id: string; value: string } | null = null;
 let muted = false;
 let appSettings: AppSettings = {
-  notifications: false, dockDictation: true, dockMute: false, autostart: false, autostartAvailable: true,
+  dockDictation: true, dockMute: false, autostart: false, autostartAvailable: true,
 };
 
 function settingViews(kind: string): SettingView[] {
@@ -222,6 +222,7 @@ export function previewBackend(): Backend {
       return () => window.clearInterval(timer);
     },
     setMeterWanted: async () => {},
+    fitHeight: async () => {},
     setMuted: async (m) => {
       muted = m;
       changed();

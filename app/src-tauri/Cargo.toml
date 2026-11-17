@@ -27,7 +27,6 @@ usb-link = { workspace = true }
 audio-pw = { workspace = true }
 # Panel icon over StatusNotifierItem; Tauri's tray gets no clicks on Cinnamon.
 ksni = { version = "0.3.7", default-features = false, features = ["async-io", "blocking"] }
-notify-rust = "4.18"
 # Presses Claude's dictation shortcut for the charging-case trigger.
 x11rb = { version = "0.14", features = ["xtest"] }
 tauri-plugin-single-instance = "2"

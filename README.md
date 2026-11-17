@@ -63,13 +63,12 @@ carries a signal. MicDeck combines both views into one traffic light.
   switching the transmitter off or unplugging the receiver is tamper-proof.)
 - **Panel icon** (StatusNotifierItem) showing the status, with a menu; closing the window keeps MicDeck
   in the panel. Without a panel the window simply behaves like a normal app.
-- **Notifications** (off by default, switch them on in the panel menu or on the App page) when the
-  receiver is unplugged, a transmitter loses its radio link for more than 3 s, and once more when
-  everything is ready again.
+- **No desktop notifications** – MicDeck shows its state in the window and the panel icon only; the
+  icon's tooltip shows the live input level.
 - **Charging case** – shows "charging" while a transmitter sits in its case, also on the older v1
   firmware (see *Protocol notes*). Optional: mute the input while transmitter 1 is in its case. If
   another program (a browser, say) starts recording meanwhile, MicDeck lifts the mute just for that
-  recording, says so in a notification (if switched on) and mutes again two seconds after it ends. A mute you set
+  recording and mutes again two seconds after it ends. A mute you set
   yourself is never lifted.
 - **Optional: dictation trigger for the Claude desktop app** (experimental, off by default) – take
   transmitter 1 out of its charging case and MicDeck starts dictation in the Claude window; put it
@@ -144,8 +143,8 @@ in at the computer (`uaccess`): no `0666`, no extra group.
 
 ## Using it
 
-- **Panel icon** – left click shows/hides the window; right click opens the menu: open, mute, notifications
-  on/off, charging-case dictation on/off, mute while in the case, start at login (installed app only),
+- **Panel icon** – left click shows/hides the window; right click opens the menu: open, mute,
+  charging-case dictation on/off, mute while in the case, start at login (installed app only),
   quit. The same switches are on the *App* page; both stay in sync.
 - **Start page** – `micdeck --page=device` opens a page directly (`overview`, `device`, `diagnose`,
   `app`).

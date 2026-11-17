@@ -83,7 +83,7 @@ zusätzlich jedes Statuspaket des Empfängers als Hex-Bytes.
   Sender-Einstellungen nur mit eingeschaltetem Sender, v2-Funktionen nur mit Firmware 02.
 - **Panel-Symbol** (Tray): Ein farbiger Punkt zeigt den Status (grün, gelb, rot, grau = prüfe). Der
   Tooltip zeigt die Kurzbeschreibung. Ein Linksklick öffnet oder versteckt das Fenster.
-- **Menü** (Rechtsklick): MicDeck öffnen · Stummschalten · Benachrichtigungen · Diktat über Ladecase ·
+- **Menü** (Rechtsklick): MicDeck öffnen · Stummschalten · Diktat über Ladecase ·
   Im Ladecase stumm · Beim Anmelden starten (nur in der installierten App) · Beenden. Dieselben
   Schalter stehen im Fenster auf der Seite *App*, beide Stellen bleiben synchron.
 - **Fenster schließen** versteckt MicDeck ins Panel. Ohne Panel-Symbol beendet es die App wie gewohnt.
@@ -99,21 +99,20 @@ zusätzlich jedes Statuspaket des Empfängers als Hex-Bytes.
 - **Im Ladecase stumm** (Panel-Menü, standardmäßig aus): Sender 1 zurück ins Ladecase schaltet das
   Mikro stumm, Herausnehmen hebt die Stummschaltung auf. Läuft ein Diktat, wird erst abgeschickt und
   dann stummgeschaltet. Will währenddessen ein anderes Programm aufnehmen (etwa der Browser), gibt
-  MicDeck das Mikro nur für diese Aufnahme frei, meldet das per Benachrichtigung (falls eingeschaltet) und schaltet 2 s
+  MicDeck das Mikro nur für diese Aufnahme frei, und schaltet 2 s
   nach dem Ende wieder stumm. Eine Stummschaltung per Knopf hebt MicDeck dafür nie auf.
 - **Stumm-Knopf** (großer runder Knopf unter der Pegelanzeige und im Panel-Menü): schaltet über WirePlumber stumm. Beim
   Mic Mini legt das den USB-Stummschalter im Empfänger selbst um („Mic Capture Switch“). Dann kommt bei
   keinem Programm mehr Ton an, auch nicht bei Programmen, die PipeWire umgehen. Hebt ein anderes
   Programm die Stummschaltung auf, warnt MicDeck. Das Panel-Symbol bekommt einen Schrägstrich.
-- **Benachrichtigungen** (standardmäßig aus, einschalten im Panel-Menü oder auf der Seite „App“): Wenn der Empfänger abgezogen wird, ein Sender länger als 3 s die Funkverbindung
-  verliert oder die Ampel länger als 3 s rot ist, und zwar nur, wenn vorher schon einmal alles bereit
-  war. Wenn danach alles wieder bereit ist, kommt einmal „Wieder einsatzbereit“.
+- **Keine Desktop-Benachrichtigungen:** MicDeck zeigt seinen Zustand nur im Fenster und am
+  Panel-Symbol. Dessen Tooltip zeigt den Live-Pegel.
 - **Diktat über Ladecase (Claude)**, im Panel-Menü, standardmäßig aus: Nimmst du Sender 1 aus dem
   Ladecase, holt MicDeck das Claude-Fenster nach vorn und drückt Claudes Diktat-Kürzel Strg+D.
   Legst du ihn zurück, wartet MicDeck 1 s Nachlauf (für das Satzende), drückt Strg+D erneut, wartet
   2 s auf den letzten Text und schickt mit Enter ab. Das Panel-Symbol zeigt dabei: leuchtender
   Lime-Sonar-Ball (Diktat läuft) → Fortschrittsbalken (wird gesendet) → Häkchen (gesendet). Tasten gehen nur an das Claude-Fenster: Lässt es sich nicht nach vorn holen, passiert
-  nichts, und eine Benachrichtigung nennt den Grund. Strg+D ist ein Umschalter. Wer zwischendurch von
+  nichts (der Grund steht im Log). Strg+D ist ein Umschalter. Wer zwischendurch von
   Hand stoppt, vertauscht Start und Stopp, und einmal Strg+D von Hand stellt es zurück. Hat Claude ein
   anderes Diktat-Kürzel eingestellt, funktioniert es nicht.
 - **Einstellungen** liegen in `~/.config/micdeck/settings.json`. Der Autostart-Eintrag

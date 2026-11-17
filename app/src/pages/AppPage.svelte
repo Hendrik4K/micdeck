@@ -9,11 +9,6 @@
 
   const rows: { id: AppSettingName; label: string; description: string }[] = [
     {
-      id: "notifications",
-      label: "Benachrichtigungen",
-      description: "Kurze Desktop-Meldung, wenn das Mikrofon nicht mehr bereit ist oder MicDeck es kurz freigibt. Standardmäßig aus.",
-    },
-    {
       id: "dockDictation",
       label: "Diktat über das Ladecase (Claude)",
       description:

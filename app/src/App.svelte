@@ -87,6 +87,34 @@
     measureFrame();
   });
 
+  // The window ends below the page and grows or shrinks with it (only the
+  // settings page is taller); the user only chooses the width.
+  let pageObserver: ResizeObserver | undefined;
+  let fitTimer = 0;
+  function fitWindow() {
+    window.clearTimeout(fitTimer);
+    fitTimer = window.setTimeout(() => {
+      const pageEl = mainEl?.querySelector<HTMLElement>(".page");
+      if (!pageEl || !backend) return;
+      const zoom = Number(document.documentElement.style.zoom || 1);
+      const bottom = pageEl.offsetTop + pageEl.offsetHeight + 22;
+      void backend.fitHeight(Math.ceil(bottom * zoom));
+    }, 80);
+  }
+  const ready = $derived(snapshot !== null);
+  $effect(() => {
+    void page;
+    void ready;
+    void failure;
+    tick().then(() => {
+      pageObserver?.disconnect();
+      const pageEl = mainEl?.querySelector<HTMLElement>(".page");
+      if (!pageEl) return;
+      pageObserver = new ResizeObserver(fitWindow);
+      pageObserver.observe(pageEl);
+    });
+  });
+
   const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
   const parts = () => ({
     panel: mainEl?.querySelector<HTMLElement>(".page > :first-child") ?? null,
@@ -205,6 +233,7 @@
     fit();
     window.addEventListener("resize", fit);
     window.addEventListener("resize", measureFrame);
+    window.addEventListener("resize", fitWindow);
 
     (async () => {
       try {
@@ -230,6 +259,8 @@
       window.clearInterval(clock);
       window.removeEventListener("resize", fit);
       window.removeEventListener("resize", measureFrame);
+      window.removeEventListener("resize", fitWindow);
+      pageObserver?.disconnect();
       observer?.disconnect();
       unlisten.forEach((u) => u());
       document.removeEventListener("visibilitychange", reportVisibility);

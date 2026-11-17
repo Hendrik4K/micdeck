@@ -8,7 +8,6 @@ use std::time::{Duration, Instant};
 
 use micdeck_core::mock::{demo_level, Scenario};
 use micdeck_core::dock::{DockEvent, DockWatcher};
-use micdeck_core::notify::{Notice, Notifier};
 use micdeck_core::{
     AudioEvent, Input, LevelFrame, MeterState, MicTestState, Snapshot, State, UsbEvent, WritePhase, WriteReport,
 };
@@ -49,8 +48,6 @@ impl Mode {
 pub enum Output {
     Snapshot(Snapshot),
     Level(LevelFrame),
-    /// Something worth a desktop notification (never for demo data).
-    Notice(Notice),
     /// A transmitter was taken out of or put back into its charging case.
     Dock(DockEvent),
 }
@@ -179,7 +176,6 @@ fn run(
     let mut meter_target: Option<String> = None;
     let mut last_json = String::new();
     let mut last_emit: Option<Instant> = None;
-    let mut notifier = Notifier::default();
     let mut dock = DockWatcher::default();
     let mut next_request: u64 = 0;
 
@@ -263,9 +259,6 @@ fn run(
         if last_emit.is_none_or(|t| t.elapsed() >= SNAPSHOT_INTERVAL) {
             last_emit = Some(Instant::now());
             let snapshot = state.snapshot(now());
-            for notice in notifier.update(&snapshot, now()) {
-                emit(Output::Notice(notice));
-            }
             for event in dock.update(&snapshot, now()) {
                 emit(Output::Dock(event));
             }
