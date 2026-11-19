@@ -150,6 +150,27 @@ fn input_is_found_by_alsa_card_before_pipewire_knows_the_usb_ids() {
 }
 
 #[test]
+fn receiver_switched_off_is_named_at_once() {
+    // Seen 18.11.2026: a Mic Mini receiver that is off but still on USB offers
+    // only its vendor interface 6 – no audio, no HID, no status frames.
+    let mut state = state_for(Scenario::NoAudioInput, 0);
+    let mut off = match Scenario::NoAudioInput.inputs().into_iter().find_map(|i| match i {
+        Input::Usb(UsbEvent::Receiver(r)) => Some(r),
+        _ => None,
+    }) {
+        Some(r) => r,
+        None => panic!("scenario has a receiver"),
+    };
+    off.interfaces.retain(|i| i.class == 0xff);
+    state.apply(Input::Usb(UsbEvent::Receiver(off)), 0);
+    let snap = state.snapshot(1_000);
+    assert_eq!(snap.verdict.level, Level::Error);
+    assert_eq!(snap.verdict.title, "Empfänger ist aus");
+    assert_eq!(check(&snap, CheckId::Usb).value, "Ausgeschaltet");
+    assert_eq!(check(&snap, CheckId::AudioInput).value, "Empfänger ist aus");
+}
+
+#[test]
 fn usb_without_audio_input_waits_then_turns_red() {
     let state = state_for(Scenario::NoAudioInput, 0);
     let early = state.snapshot(1_000);

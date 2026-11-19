@@ -319,6 +319,7 @@ impl State {
                     }
                     Some(facts) => lock_reason(spec, facts),
                     None if primary.is_none() => Some("Kein Empfänger angeschlossen.".into()),
+                    None if primary.is_some_and(|p| p.usb.control_only()) => Some("Empfänger ist aus.".into()),
                     None => Some("Keine Statusdaten vom Empfänger.".into()),
                 };
                 SettingView {

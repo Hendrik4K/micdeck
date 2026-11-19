@@ -183,6 +183,11 @@ pub struct Snapshot {
     pub device_log: Vec<WriteLogView>,
 }
 
+/// Receiver on USB but switched off (see `UsbReceiver::control_only`).
+const RECEIVER_OFF_HINT: &str = "Der Empfänger steckt am USB, gibt aber weder Ton noch Statusdaten heraus. \
+     Taste am Empfänger kurz gedrückt halten, bis er sucht – das eingeschaltete Mikrofon \
+     verbindet sich dann von selbst. Reagiert er nicht, kurz im Ladecase laden.";
+
 fn check(id: CheckId, level: CheckLevel, label: &str, value: impl Into<String>) -> Check {
     Check { id, level, label: label.to_string(), value: value.into(), hint: None }
 }
@@ -419,6 +424,7 @@ impl State {
 
         let usb_id = format!("{:04x}:{:04x}", p.usb.vendor_id, p.usb.product_id);
         let usb = match &p.usb.model_name {
+            _ if p.usb.control_only() => check(CheckId::Usb, CheckLevel::Warn, USB, "Ausgeschaltet").hint(RECEIVER_OFF_HINT),
             Some(name) => check(CheckId::Usb, CheckLevel::Ok, USB, format!("{name} angeschlossen")),
             None => check(CheckId::Usb, CheckLevel::Warn, USB, format!("Unbekanntes DJI-Gerät ({usb_id})"))
                 .hint("MicDeck kennt dieses Modell noch nicht. Ton und Pegel werden trotzdem geprüft."),
@@ -451,6 +457,10 @@ impl State {
             LinkState::Failed { message } => (
                 check(CheckId::Radio, CheckLevel::Warn, RADIO, "Steuerverbindung gestört")
                     .hint(format!("{message}. Empfänger einmal aus- und wieder einstecken.")),
+                Radio::Unknown,
+            ),
+            LinkState::Open if p.usb.control_only() && p.live_status(now_ms).is_none() => (
+                check(CheckId::Radio, CheckLevel::Inactive, RADIO, "Empfänger aus"),
                 Radio::Unknown,
             ),
             LinkState::Open => {
@@ -518,6 +528,9 @@ impl State {
                         .hint("Empfänger einmal aus- und wieder einstecken.")
                 }
                 (Some(s), _) => check(CheckId::AudioInput, CheckLevel::Ok, LABEL, format!("„{}“", s.description)),
+                (None, Some(p)) if p.usb.control_only() => {
+                    check(CheckId::AudioInput, CheckLevel::Error, LABEL, "Empfänger ist aus").hint(RECEIVER_OFF_HINT)
+                }
                 (None, Some(p)) if now_ms.saturating_sub(p.attached_ms) < AUDIO_SETUP_GRACE_MS => {
                     check(CheckId::AudioInput, CheckLevel::Pending, LABEL, "Wird eingerichtet …")
                 }
@@ -643,6 +656,11 @@ impl State {
         let Some(s) = source else {
             return match primary {
                 None => v(Level::Error, "Nicht verbunden", "Kein DJI-Empfänger am USB gefunden.".into()),
+                Some(p) if p.usb.control_only() => v(
+                    Level::Error,
+                    "Empfänger ist aus",
+                    "Taste am Empfänger kurz gedrückt halten, bis er sucht – das Mikrofon verbindet sich dann.".into(),
+                ),
                 Some(p) if now_ms.saturating_sub(p.attached_ms) < AUDIO_SETUP_GRACE_MS => v(
                     Level::Pending,
                     "Empfänger erkannt",

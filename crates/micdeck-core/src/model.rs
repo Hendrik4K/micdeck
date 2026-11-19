@@ -60,6 +60,13 @@ impl UsbReceiver {
             .iter()
             .any(|i| i.driver.as_deref() == Some("snd-usb-audio"))
     }
+
+    /// Only the vendor control interface is offered, no audio or HID: what a
+    /// Mic Mini receiver shows while it is switched off (or out of power) but
+    /// still on USB. No sound and no status data will come until it is on.
+    pub fn control_only(&self) -> bool {
+        !self.interfaces.is_empty() && self.interfaces.iter().all(|i| i.class == 0xff)
+    }
 }
 
 /// Everything the USB adapter reports.
