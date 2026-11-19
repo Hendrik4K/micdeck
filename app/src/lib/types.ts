@@ -38,6 +38,8 @@ export interface ReceiverView {
   gainDialDb: number | null;
   settings: Record<string, string>;
   alsaCards: number[];
+  /** On USB but switched off: only the control interface, no sound. */
+  switchedOff: boolean;
 }
 
 export interface BatteryView {
@@ -187,6 +189,15 @@ export type AppSettingName = "dockDictation" | "dockMute" | "autostart";
 export interface DeviceImages {
   receiver: string | null;
   transmitter: string | null;
+  /** Where the status lights sit on the user's own pictures (leds.json). */
+  leds: LedLayout | null;
+}
+
+/** Light position as [x, y] or [x, y, width, height], in % of the picture. */
+export type LedSpot = number[];
+export interface LedLayout {
+  receiver?: { power?: LedSpot; unit1?: LedSpot; unit2?: LedSpot };
+  transmitter?: { status?: LedSpot };
 }
 
 export interface Snapshot {

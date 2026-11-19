@@ -69,6 +69,10 @@ zusätzlich jedes Statuspaket des Empfängers als Hex-Bytes.
   `transmitter.png` (oder `.webp`/`.jpg`, am besten freigestellt mit transparentem Hintergrund,
   höchstens 10 MB) nach `~/.config/micdeck/devices/` und starte MicDeck neu. Dann erscheinen deine
   Bilder. Sie bleiben auf deinem Rechner.
+  Die Statuslämpchen (Strom, Mikrofon 1/2, Lämpchen am Mikrofon) erscheinen dort, wo eine optionale
+  `leds.json` im selben Ordner sie hinlegt, in Prozent des jeweiligen Bildes:
+  `{"receiver": {"power": [25, 56], "unit1": [13, 24], "unit2": [22, 27]}, "transmitter": {"status": [76, 56]}}`
+  (eine dritte und vierte Zahl setzen Breite und Höhe). Ohne die Datei zeigen eigene Bilder keine Lämpchen.
 - **Geräteeinstellungen:** Rauschminderung an/aus und Einfach/Stark, Audio-Kanal Mono/Stereo,
   Backup-Aufnahme, Hochpassfilter, Clipping-Kontrolle, automatische Abschaltung (Empfänger und
   Sender), Empfänger An/Aus mit Kamera, Einschalttaste für Rauschminderung, Mikrofon-LED. MicDeck

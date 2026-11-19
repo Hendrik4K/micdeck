@@ -84,6 +84,8 @@ pub struct ReceiverView {
     /// Current value of every setting the receiver reports.
     pub settings: BTreeMap<String, String>,
     pub alsa_cards: Vec<u32>,
+    /// On USB but switched off: only the control interface, no sound.
+    pub switched_off: bool,
 }
 
 /// Battery as the device reports it: a 7-step gauge, no percentage.
@@ -346,6 +348,7 @@ impl State {
                 gain_dial_db: status.and_then(|s| s.gain_dial),
                 settings: status.map(|s| s.settings.clone()).unwrap_or_default(),
                 alsa_cards: p.usb.alsa_cards.clone(),
+                switched_off: p.usb.control_only(),
             }),
             other_receivers: self.receivers.len().saturating_sub(1),
             transmitters,

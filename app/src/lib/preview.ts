@@ -1,7 +1,8 @@
 // Browser-only preview for UI work (`pnpm dev` opened in a normal browser).
 // Never used inside the app; every value here is fake and labelled as such.
 // Pick a state with the URL hash: #ready (default), #no-tx, #unplugged, #no-permission,
-// #charging (transmitter 1 in its case), #test (microphone test recording), #muted.
+// #charging (transmitter 1 in its case), #test (microphone test recording), #muted,
+// #off (receiver switched off on USB), #low (microphone battery at half).
 // `?images=<url>` loads receiver.webp and transmitter.webp from there instead
 // of the built-in silhouettes.
 
@@ -59,7 +60,7 @@ let appSettings: AppSettings = {
 };
 
 function settingViews(kind: string): SettingView[] {
-  const live = kind === "ready" || kind === "no-tx" || kind === "charging" || kind === "test" || kind === "muted";
+  const live = kind === "ready" || kind === "no-tx" || kind === "charging" || kind === "test" || kind === "muted" || kind === "low";
   return SPECS.map((spec) => {
     const value = !live || (spec.needsTx && kind === "no-tx") ? null : values[spec.id];
     let locked = spec.locked;
@@ -82,6 +83,16 @@ function settingViews(kind: string): SettingView[] {
 function checks(kind: string): Check[] {
   const c = (id: Check["id"], level: Check["level"], label: string, value: string, hint: string | null = null): Check =>
     ({ id, level, label, value, hint });
+  if (kind === "off") {
+    return [
+      c("usb", "warn", "Empfänger (USB)", "Ausgeschaltet", "Taste am Empfänger kurz gedrückt halten, bis er sucht."),
+      c("radio", "inactive", "Funkverbindung", "Empfänger aus"),
+      c("audioInput", "error", "Audioeingang", "Empfänger ist aus"),
+      c("mute", "inactive", "Lautstärke", "–"),
+      c("defaultInput", "inactive", "Standard-Mikrofon", "–"),
+      c("signal", "inactive", "Ton kommt an", "–"),
+    ];
+  }
   if (kind === "unplugged") {
     return [
       c("usb", "error", "Empfänger (USB)", "Nicht angeschlossen", "Empfänger mit einem USB-C-Datenkabel an den PC anschließen."),
@@ -111,11 +122,11 @@ function checks(kind: string): Check[] {
 function snapshot(kind: string): Snapshot {
   const tx = (unit: number, gauge: number): TransmitterView => ({
     unit,
-    connected: kind === "no-permission" || kind === "unplugged" ? null : kind !== "no-tx",
+    connected: kind === "no-permission" || kind === "unplugged" || kind === "off" ? null : kind !== "no-tx",
     name: kind === "no-tx" || kind === "no-permission" ? null : "DJI Mic Mini",
     serial: null,
     firmware: kind === "no-tx" ? null : "02.03.17.00",
-    battery: kind === "no-tx" || kind === "no-permission"
+    battery: kind === "no-tx" || kind === "no-permission" || kind === "off"
       ? null
       : { gauge, bars: 7 - gauge, label: gauge <= 2 ? "hoch" : "mittel", charging: kind === "charging" && unit === 1, low: false, critical: false },
     charging: kind === "charging" && unit === 1 ? true : null,
@@ -124,16 +135,18 @@ function snapshot(kind: string): Snapshot {
   const verdict =
     kind === "unplugged"
       ? { level: "error" as const, title: "Nicht verbunden", detail: "Kein DJI-Empfänger am USB gefunden." }
+      : kind === "off"
+        ? { level: "error" as const, title: "Empfänger ist aus", detail: "Taste am Empfänger kurz gedrückt halten, bis er sucht." }
       : kind === "no-tx"
         ? { level: "warn" as const, title: "Verbunden – kein Sender aktiv", detail: "Der Empfänger ist bereit, aber kein Sender ist eingeschaltet." }
         : { level: "ok" as const, title: "Einsatzbereit", detail: "DJI Mic Mini · Beide Sender verbunden · Ton kommt an" };
-  const present = kind !== "unplugged";
+  const present = kind !== "unplugged" && kind !== "off";
   return {
     simulated: true,
     demoLabel: "Browser-Vorschau",
     verdict,
     checks: checks(kind),
-    receiver: present
+    receiver: kind !== "unplugged"
       ? {
           key: "preview",
           name: "DJI Mic Mini",
@@ -146,10 +159,11 @@ function snapshot(kind: string): Snapshot {
           gainDialDb: kind === "no-permission" ? null : 0,
           settings: {},
           alsaCards: [5],
+          switchedOff: kind === "off",
         }
       : null,
     otherReceivers: 0,
-    transmitters: [tx(1, 2), tx(2, 4)],
+    transmitters: [tx(1, kind === "low" ? 4 : 2), tx(2, 4)],
     audio: {
       service: { kind: "available" },
       source: present
@@ -257,7 +271,9 @@ export function previewBackend(): Backend {
     startPage: async () => null,
     deviceImages: async () => {
       const base = new URLSearchParams(location.search).get("images");
-      return base ? { receiver: `${base}/receiver.webp`, transmitter: `${base}/transmitter.webp` } : { receiver: null, transmitter: null };
+      if (!base) return { receiver: null, transmitter: null, leds: null };
+      const leds = await fetch(`${base}/leds.json`).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+      return { receiver: `${base}/receiver.webp`, transmitter: `${base}/transmitter.webp`, leds };
     },
   };
 }

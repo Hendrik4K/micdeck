@@ -1,7 +1,8 @@
 //! Device pictures the user puts into `~/.config/micdeck/devices/`
 //! (`receiver` and `transmitter`, as .png, .webp or .jpg; best with a
 //! transparent background). They replace the silhouettes MicDeck ships with
-//! and never leave this computer.
+//! and never leave this computer. An optional `leds.json` there says where
+//! the status lights sit on them (see `LedLayout` in the UI).
 
 use std::fs;
 use std::path::Path;
@@ -20,6 +21,7 @@ const FORMATS: [(&str, &str); 4] =
 pub struct DeviceImages {
     pub receiver: Option<String>,
     pub transmitter: Option<String>,
+    pub leds: Option<serde_json::Value>,
 }
 
 fn load(dir: &Path, name: &str) -> Option<String> {
@@ -44,7 +46,20 @@ pub fn load_all() -> DeviceImages {
     let Some(dir) = crate::settings::config_home().map(|c| c.join("micdeck").join("devices")) else {
         return DeviceImages::default();
     };
-    DeviceImages { receiver: load(&dir, "receiver"), transmitter: load(&dir, "transmitter") }
+    DeviceImages { receiver: load(&dir, "receiver"), transmitter: load(&dir, "transmitter"), leds: load_leds(&dir) }
+}
+
+fn load_leds(dir: &Path) -> Option<serde_json::Value> {
+    let path = dir.join("leds.json");
+    let text = fs::read_to_string(&path).ok()?;
+    match serde_json::from_str::<serde_json::Value>(&text) {
+        Ok(v) if v.is_object() => Some(v),
+        Ok(_) => None,
+        Err(e) => {
+            log::warn!("{} is not valid JSON: {e}", path.display());
+            None
+        }
+    }
 }
 
 #[cfg(test)]

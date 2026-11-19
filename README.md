@@ -152,6 +152,10 @@ in at the computer (`uaccess`): no `0666`, no extra group.
   `transmitter.png` (or `.webp`/`.jpg`, ideally cut out on a transparent background, at most 10 MB)
   into `~/.config/micdeck/devices/` and restart MicDeck to see your own pictures instead. They never
   leave your computer.
+  The status lights (power, microphone 1/2, the light on the microphone) are drawn where an optional
+  `leds.json` in the same folder puts them, in percent of each picture:
+  `{"receiver": {"power": [25, 56], "unit1": [13, 24], "unit2": [22, 27]}, "transmitter": {"status": [76, 56]}}`
+  (an optional third and fourth number set width and height). Without it, own pictures show no lights.
 - **Start at login** creates `~/.config/autostart/micdeck.desktop` (started with `--hidden`, panel only)
   and removes it again when switched off. Settings live in `~/.config/micdeck/settings.json`.
 - **Demo mode** – `micdeck --demo` cycles through all twelve scenarios; `micdeck --demo=no-transmitter`

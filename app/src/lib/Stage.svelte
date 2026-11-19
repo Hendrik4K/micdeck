@@ -1,6 +1,6 @@
 <script lang="ts">
   import { tick } from "svelte";
-  import type { Check, DeviceImages, Snapshot, TransmitterView } from "./types";
+  import type { Check, DeviceImages, LedLayout, LedSpot, Snapshot } from "./types";
   // Built-in placeholders: silhouettes of the devices (AI-generated, see
   // THIRD_PARTY.md). The user's own pictures replace them.
   import receiverImg from "../assets/devices/stage-receiver.webp";
@@ -10,23 +10,51 @@
 
   const usb = $derived(snapshot.checks.find((c) => c.id === "usb"));
   const tx1 = $derived(snapshot.transmitters.find((t) => t.unit === 1));
-  const linked = $derived(snapshot.receiver !== null && tx1?.connected === true);
+  const tx2 = $derived(snapshot.transmitters.find((t) => t.unit === 2));
+  /** Receiver on USB and switched on. */
+  const on = $derived(snapshot.receiver !== null && !snapshot.receiver.switchedOff);
+  const linked = $derived(on && tx1?.connected === true);
 
-  function txText(tx: TransmitterView): string {
-    if (tx.battery) return `${capital(tx.battery.label)}${tx.battery.charging ? " · lädt" : ""}`;
-    if (tx.charging) return "Im Ladecase · lädt";
-    return "Verbunden";
+  // Status lights drawn over the pictures, like the ones on the devices:
+  // power next to "MIC RX", one per microphone above "1"/"2", and the light
+  // on the microphone. Yellow blinks while the microphone is not connected.
+  type Light = "green" | "red" | "yellow" | "dark" | null;
+  const powerLight = $derived<Light>(!snapshot.receiver ? null : snapshot.receiver.switchedOff ? "red" : "green");
+  const unit1Light = $derived<Light>(!on ? null : tx1?.connected === true ? "green" : tx1?.connected === false ? "yellow" : null);
+  const unit2Light = $derived<Light>(on && tx2?.connected === true ? "green" : null);
+  const txLight = $derived<Light>(!on ? "dark" : tx1?.connected === true ? "green" : tx1?.connected === false ? "yellow" : "dark");
+
+  /** Where the lights sit on the built-in silhouettes, in % of the picture. */
+  const BUILTIN_LEDS: LedLayout = {
+    receiver: { power: [43.4, 46], unit1: [23.7, 32.2], unit2: [32.9, 31.3] },
+    transmitter: { status: [67.2, 64] },
+  };
+  // Own pictures only get lights where leds.json places them.
+  const rxLeds = $derived(images.receiver ? images.leds?.receiver : BUILTIN_LEDS.receiver);
+  const txLeds = $derived(images.transmitter ? images.leds?.transmitter : BUILTIN_LEDS.transmitter);
+
+  // The lights are placed on the picture itself, so its frame must match the
+  // picture's shape inside the fixed box.
+  let rxRatio = $state(0);
+  let txRatio = $state(0);
+  function fit(boxW: number, boxH: number, ratio: number) {
+    const w = ratio ? Math.min(boxW, boxH * ratio) : boxW;
+    return { w, h: ratio ? w / ratio : boxH };
   }
-  const capital = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+  const rxBox = $derived(fit(400, 233, rxRatio));
+  const txBox = $derived(fit(260, 300, txRatio));
+  const ratioOf = (el: Element) => {
+    const img = el as HTMLImageElement;
+    return img.naturalHeight ? img.naturalWidth / img.naturalHeight : 0;
+  };
   const mark = (c: Check | undefined) => c?.level ?? "pending";
-  // Muted with nothing else wrong: still "Einsatzbereit" in green, but the
-  // light and the radio waves turn red. Details live on the Diagnose page.
+  // Muted with nothing else wrong: still "Einsatzbereit" in green; the red
+  // accents show the mute. Details live on the Diagnose page.
   const muteOnly = $derived(
     snapshot.audio.source?.muted === true &&
       snapshot.checks.every((c) => c.id === "mute" || c.id === "signal" || c.level === "ok" || c.level === "inactive"),
   );
   const verdict = $derived(muteOnly ? { level: "ok" as const, title: "Einsatzbereit" } : snapshot.verdict);
-  const muted = $derived(snapshot.audio.source?.muted === true);
   /** Charging: bar, blinking cell and bolt share one beat (see `sync`). */
   let unitsEl = $state<HTMLElement | null>(null);
   const chargeKey = $derived(snapshot.transmitters.map((t) => `${t.charging}:${t.battery?.bars}`).join(","));
@@ -43,10 +71,10 @@
   }
 </script>
 
-<section class="stage level-{verdict.level}" class:muted aria-live="polite">
+<section class="stage level-{verdict.level}" aria-live="polite">
   <div class="status">
     <p class="kicker">Dein {snapshot.receiver?.name ?? "DJI Mic Mini"}</p>
-    <h1 class:long={verdict.title.length > 18}>{verdict.title}</h1>
+    <h1 class:long={verdict.title.length > 15}>{verdict.title}</h1>
 
     <ul class="units" bind:this={unitsEl}>
       <li>
@@ -64,14 +92,16 @@
         <li class:dim={tx.connected !== true}>
           <span class="name">{tx.unit === 1 ? "Mikrofon" : `Mikrofon ${tx.unit}`}</span>
           {#if tx.connected === true}
-            {#if tx.battery}
+            <!-- The battery only shows once it matters (half or less) or while
+                 charging; otherwise a tick says the microphone is connected. -->
+            {#if tx.battery && (tx.charging === true || tx.battery.gauge >= 4)}
               {@const at = Math.min(tx.battery.bars, 5)}
               <span
                 class="battery"
                 class:loading={tx.charging === true}
                 class:low={tx.battery.low && !tx.charging}
                 class:critical={tx.battery.critical && !tx.charging}
-                title="Gerätewert: Stufe {tx.battery.gauge} von 7 (1 = voll)"
+                title="Akku {tx.battery.label} · Gerätewert: Stufe {tx.battery.gauge} von 7 (1 = voll)"
               >
                 {#each Array.from({ length: 6 }, (_, i) => i) as i (i)}
                   <span
@@ -83,18 +113,16 @@
                   ></span>
                 {/each}
               </span>
+            {:else if !tx.charging}
+              <span class="ok-dot" title={tx.battery ? `Verbunden · Akku ${tx.battery.label}` : "Verbunden"}>
+                <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 8.5l2.6 2.6L12 5.5" /></svg>
+              </span>
             {/if}
             {#if tx.charging}
               <svg class="bolt beat" viewBox="0 0 16 16" aria-label="lädt">
                 <title>{tx.battery ? `Lädt · ${tx.battery.label}` : "Lädt im Ladecase"}</title>
                 <path d="M9 1.5L3.5 9H8l-1 5.5L12.5 7H8z" />
               </svg>
-            {:else if tx.battery && tx.battery.gauge === 1}
-              <span class="mark full" title="Akku voll">
-                <svg viewBox="0 0 16 16" aria-label="voll"><path d="M4 8.5l2.6 2.6L12 5.5" /></svg>
-              </span>
-            {:else if !tx.battery || tx.battery.low}
-              <span class="value">{txText(tx)}</span>
             {/if}
           {:else if tx.connected === false}
             <span class="pill">Nicht verbunden</span>
@@ -106,25 +134,48 @@
     </ul>
   </div>
 
+  {#snippet led(spot: LedSpot | undefined, light: Light, kind: string)}
+    {#if spot && light}
+      <span
+        class="led {kind} {light}"
+        style:left="{spot[0]}%"
+        style:top="{spot[1]}%"
+        style:width={spot[2] != null ? `${spot[2]}%` : null}
+        style:height={spot[3] != null ? `${spot[3]}%` : null}
+      ></span>
+    {/if}
+  {/snippet}
+
   <div class="devices" class:absent={!snapshot.receiver} aria-hidden="true">
     <div class="txwrap">
-      <img
-        class="tx"
-        class:custom={images.transmitter !== null}
-        class:off={tx1?.connected !== true}
-        src={images.transmitter ?? transmitterImg}
-        alt=""
-      />
+      <div class="pic" style:width="{txBox.w}px" style:height="{txBox.h}px">
+        <img
+          class="tx"
+          class:custom={images.transmitter !== null}
+          class:off={!linked}
+          src={images.transmitter ?? transmitterImg}
+          alt=""
+          onload={(e) => (txRatio = ratioOf(e.currentTarget))}
+        />
+        {#if txRatio}{@render led(txLeds?.status, txLight, "status")}{/if}
+      </div>
     </div>
-    <svg class="waves" class:on={linked} viewBox="0 0 40 60">
-      <path d="M8 22a11 11 0 0 1 0 16" />
-      <path d="M16 15a20 20 0 0 1 0 30" />
-      <path d="M24 8a29 29 0 0 1 0 44" />
-    </svg>
-    <img class="rx" class:custom={images.receiver !== null} src={images.receiver ?? receiverImg} alt="" />
+    <div class="rx">
+      <div class="pic" style:width="{rxBox.w}px" style:height="{rxBox.h}px">
+        <img
+          class:custom={images.receiver !== null}
+          src={images.receiver ?? receiverImg}
+          alt=""
+          onload={(e) => (rxRatio = ratioOf(e.currentTarget))}
+        />
+        {#if rxRatio}
+          {@render led(rxLeds?.power, powerLight, "power")}
+          {@render led(rxLeds?.unit1, unit1Light, "unit")}
+          {@render led(rxLeds?.unit2, unit2Light, "unit")}
+        {/if}
+      </div>
+    </div>
   </div>
-  <!-- Status-coloured light over the pictures, which sit on pure black. -->
-  <div class="glow" aria-hidden="true"></div>
 </section>
 
 <style>
@@ -150,13 +201,6 @@
   .level-ok { --tone: var(--ok); }
   .level-warn { --tone: var(--warn); }
   .level-error { --tone: var(--error); }
-  /* The light over the pictures: the status colour, red while muted. */
-  .stage {
-    --light: var(--tone);
-  }
-  .stage.muted {
-    --light: var(--error);
-  }
 
   .kicker {
     margin: 0;
@@ -165,6 +209,8 @@
     color: var(--text-2);
   }
   h1 {
+    /* Long titles wrap before they reach the pictures. */
+    max-width: 440px;
     margin: 2px 0 4px;
     font-size: clamp(34px, 4.4vw, 54px);
     line-height: 1.05;
@@ -213,27 +259,6 @@
   .value {
     color: var(--text-2);
     font-size: 15px;
-  }
-  .mark {
-    display: grid;
-    place-items: center;
-    width: 22px;
-    height: 22px;
-    border-radius: 50%;
-  }
-  .mark svg {
-    width: 14px;
-    height: 14px;
-  }
-  .mark.full {
-    background: var(--ok);
-  }
-  .mark.full svg {
-    fill: none;
-    stroke: var(--accent-ink);
-    stroke-width: 2.2;
-    stroke-linecap: round;
-    stroke-linejoin: round;
   }
   .ok-dot {
     display: grid;
@@ -376,15 +401,6 @@
   .devices > * {
     position: absolute;
   }
-  .glow {
-    position: absolute;
-    inset: 0;
-    z-index: 1;
-    pointer-events: none;
-    background: radial-gradient(var(--glow-size, 34% 70%) at var(--glow-at, 64% 50%), color-mix(in srgb, var(--light) 18%, transparent), transparent 72%);
-    mix-blend-mode: screen;
-    transition: background 400ms ease;
-  }
   img {
     display: block;
     width: 100%;
@@ -397,55 +413,73 @@
   /* The user's own pictures are cut out: no edge fade, a soft rim instead. */
   img.custom {
     mask-image: none;
-    filter: drop-shadow(0 0 1px rgba(255, 255, 255, 0.35))
-      drop-shadow(0 8px 26px color-mix(in srgb, var(--light) 32%, transparent));
+    /* No coloured halo: the status lights on the devices say it all. */
+    filter: drop-shadow(0 0 1px rgba(255, 255, 255, 0.35));
+    transition: opacity 400ms, filter 400ms;
   }
   .tx.off {
-    opacity: 0.35;
+    opacity: 0.45;
     filter: grayscale(1);
+  }
+  .pic {
+    position: relative;
+  }
+  /* Status lights on the pictures. */
+  .led {
+    position: absolute;
+    z-index: 1;
+    transform: translate(-50%, -50%);
+    border-radius: 999px;
+    --c: var(--ok);
+    background: var(--c);
+    box-shadow:
+      0 0 4px 1px color-mix(in srgb, var(--c) 80%, transparent),
+      0 0 14px 3px color-mix(in srgb, var(--c) 45%, transparent);
+    transition: background 300ms, box-shadow 300ms;
+  }
+  .led.power {
+    width: 2%;
+    height: 7.4%;
+  }
+  .led.unit {
+    width: 2.2%;
+    height: 3%;
+  }
+  .led.status {
+    width: 2.6%;
+    height: 7.6%;
+  }
+  .led.red {
+    --c: var(--error);
+  }
+  .led.yellow {
+    --c: var(--warn);
+    animation: led-blink 1.1s ease-in-out infinite;
+  }
+  /* Covers a light that is lit in the photo. */
+  .led.dark {
+    background: #17191b;
+    box-shadow: 0 0 3px 2px #17191b;
+  }
+  @keyframes led-blink {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.12;
+    }
   }
   .absent img {
     opacity: 0.25;
     filter: grayscale(1);
   }
-  .waves {
-    width: 40px;
-    height: 60px;
-    z-index: 2;
-    fill: none;
-    stroke: var(--light);
-    stroke-width: 3.2;
-    stroke-linecap: round;
-    opacity: 0;
-    transition: opacity 400ms;
-  }
-  .waves.on {
-    opacity: 1;
-  }
-  .waves.on path {
-    animation: wave 2.4s ease-in-out infinite;
-  }
-  .waves path:nth-child(2) {
-    animation-delay: 0.25s;
-  }
-  .waves path:nth-child(3) {
-    animation-delay: 0.5s;
-  }
-  @keyframes wave {
-    0%,
-    100% {
-      opacity: 0.3;
-    }
-    40% {
-      opacity: 1;
-    }
-  }
-
   /* The receiver in the middle, tilted to the left; the transmitter comes
-     up from the bottom right corner, tilted the other way and half hidden.
-     The waves run between them. */
-  .stage {
-    --glow-at: 52% 50%;
+     up from the bottom right corner, tilted the other way and half hidden. */
+  .rx,
+  .txwrap {
+    display: grid;
+    place-items: center;
   }
   .rx {
     z-index: 1;
@@ -462,11 +496,6 @@
     width: 260px;
     height: var(--tx-h);
     transform: rotate(11deg);
-  }
-  .waves {
-    left: 70%;
-    top: 22%;
-    transform: rotate(200deg);
   }
 
   @media (max-width: 820px) {

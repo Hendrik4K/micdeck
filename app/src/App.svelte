@@ -11,7 +11,7 @@
   let snapshot = $state<Snapshot | null>(null);
   let level = $state<LevelFrame | null>(null);
   let appSettings = $state<AppSettings | null>(null);
-  let images = $state<DeviceImages>({ receiver: null, transmitter: null });
+  let images = $state<DeviceImages>({ receiver: null, transmitter: null, leds: null });
   let failure = $state<string | null>(null);
   let page = $state<Page>(storedPage());
   /** Wall clock for fading out setting feedback. */
