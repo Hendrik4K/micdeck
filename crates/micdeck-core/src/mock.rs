@@ -241,6 +241,7 @@ impl Scenario {
             volume: Some(1.0),
             channels: Some(2),
             capture_apps: Vec::new(),
+            jack_plugged: None,
         };
         let mut sources = vec![other];
         let has_dji = !matches!(self, Scenario::Unplugged | Scenario::NoAudioInput);
@@ -259,6 +260,7 @@ impl Scenario {
                     volume: Some(1.0),
                     channels: Some(2),
                     capture_apps: Vec::new(),
+                    jack_plugged: None,
                 },
             );
         }

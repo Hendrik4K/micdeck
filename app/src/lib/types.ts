@@ -82,6 +82,8 @@ export interface AudioSource {
   channels: number | null;
   /** Other programs recording from this input right now. */
   captureApps: string[];
+  /** Analog socket: plug in it (jack detection); null when unknown or no socket. */
+  jackPlugged: boolean | null;
 }
 
 export interface SourceRef {
@@ -200,9 +202,27 @@ export interface LedLayout {
   transmitter?: { status?: LedSpot };
 }
 
+/** How the receiver reaches the PC: USB-C (sound and data) or 3.5 mm jack (sound only). */
+export type Connection = "none" | "usb" | "jack";
+
+export interface JackOption {
+  nodeName: string;
+  /** "Front", "Back", "Line" … */
+  label: string;
+}
+
+export interface JackView {
+  nodeName: string;
+  label: string;
+  /** Sockets with a plug in them; a click on „Klinke“ goes to the next one. */
+  options: JackOption[];
+}
+
 export interface Snapshot {
   simulated: boolean;
   demoLabel: string | null;
+  connection: Connection;
+  jack: JackView | null;
   verdict: Verdict;
   checks: Check[];
   receiver: ReceiverView | null;

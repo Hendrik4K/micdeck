@@ -6,6 +6,7 @@
 //! DJI input when the user presses its mute button. It never changes the
 //! default device, volumes or links.
 
+mod jacks;
 mod meter;
 mod mictest;
 mod props;
@@ -33,6 +34,8 @@ const ENOENT: i32 = 2;
 const METER_RETRY_DELAY: Duration = Duration::from_secs(5);
 /// Give PipeWire a moment to describe all objects before the first report.
 const FIRST_REPORT_DELAY: Duration = Duration::from_millis(300);
+/// How often the jack detection of analog inputs is read.
+const JACK_POLL: Duration = Duration::from_secs(2);
 
 enum Command {
     Meter(Option<String>),
@@ -256,6 +259,9 @@ struct Shared {
     meter_retry_at: Option<Instant>,
     mic_test_wanted: Option<String>,
     mic_test: Option<mictest::MicSession>,
+    /// Jack detection per card (see `jacks`), and when it was last read.
+    jacks: HashMap<String, jacks::CardJacks>,
+    jacks_read: Option<Instant>,
 }
 
 impl Shared {
@@ -277,6 +283,8 @@ impl Shared {
             meter_retry_at: None,
             mic_test_wanted: None,
             mic_test: None,
+            jacks: HashMap::new(),
+            jacks_read: None,
         }
     }
 
@@ -468,6 +476,7 @@ impl Shared {
                     volume: p.volume,
                     channels: p.channels,
                     capture_apps: self.capture_apps(id),
+                    jack_plugged: self.jack_plugged(p),
                 })
             })
             // MicDeck's own meter is a stream, not a source, but be safe.
@@ -478,6 +487,35 @@ impl Shared {
             sources,
             default_source: self.default_source.clone(),
             configured_default_source: self.configured_default_source.clone(),
+        }
+    }
+
+    /// Whether a plug sits in the socket of this analog input, if known.
+    fn jack_plugged(&self, p: &NodeProps) -> Option<bool> {
+        let control = jacks::control_for(p.node_name.as_deref()?)?;
+        let card = jacks::card_of(p.alsa_card, p.alsa_path.as_deref())?;
+        self.jacks.get(&card)?.get(control).copied()
+    }
+
+    /// Re-read the jack detection of every card with an analog input.
+    fn read_jacks(&mut self) {
+        if self.jacks_read.is_some_and(|t| t.elapsed() < JACK_POLL) {
+            return;
+        }
+        self.jacks_read = Some(Instant::now());
+        let mut cards: Vec<String> = self
+            .nodes
+            .values()
+            .filter(|n| n.props.node_name.as_deref().and_then(jacks::control_for).is_some())
+            .filter_map(|n| jacks::card_of(n.props.alsa_card, n.props.alsa_path.as_deref()))
+            .collect();
+        cards.sort();
+        cards.dedup();
+        let fresh: HashMap<String, jacks::CardJacks> =
+            cards.into_iter().filter_map(|c| jacks::read_card(&c).map(|j| (c, j))).collect();
+        if fresh != self.jacks {
+            self.jacks = fresh;
+            self.dirty = true;
         }
     }
 
@@ -496,6 +534,7 @@ impl Shared {
 
     fn tick(this: &Rc<RefCell<Self>>, core: &pw::core::CoreRc) {
         let mut s = this.borrow_mut();
+        s.read_jacks();
         if s.dirty && s.started.elapsed() >= FIRST_REPORT_DELAY {
             s.dirty = false;
             let graph = s.graph();

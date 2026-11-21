@@ -19,11 +19,13 @@ pub struct Settings {
     /// Mute the DJI input while transmitter 1 sits in its charging case,
     /// unmute when it is taken out. Off unless the user switches it on.
     pub dock_mute: bool,
+    /// The jack input (`node.name`) last picked with a click on „Klinke“.
+    pub jack_input: Option<String>,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Self { dock_dictation: false, dock_mute: false }
+        Self { dock_dictation: false, dock_mute: false, jack_input: None }
     }
 }
 

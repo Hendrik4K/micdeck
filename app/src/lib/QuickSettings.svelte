@@ -4,6 +4,7 @@
   import Segmented from "./ui/Segmented.svelte";
   import { fade } from "svelte/transition";
   import { anyPending, byId, errorFor } from "./settings";
+  import UsbLock from "./UsbLock.svelte";
 
   let {
     settings,
@@ -13,6 +14,7 @@
     onmore,
     testable = false,
     ontest,
+    usbOnly = false,
   }: {
     settings: SettingView[];
     log: WriteLogEntry[];
@@ -23,6 +25,8 @@
     testable?: boolean;
     /** Opens the microphone test in this panel's place. */
     ontest?: () => void;
+    /** Receiver on the 3.5 mm jack: the settings need USB-C, frosted glass over them. */
+    usbOnly?: boolean;
   } = $props();
 
   // The start page keeps the two noise filters; everything else is under
@@ -50,11 +54,14 @@
   <div class="grow"><h2>Einstellungen</h2></div>
 </header>
 
-{#if common}
+{#if common && !usbOnly}
   <p class="common">{common}</p>
 {/if}
 
-<div class="rows">
+<div class="rows" class:locked={usbOnly}>
+  <!-- The glass sits beside the (inert) rows, so it still reacts to the mouse. -->
+  {#if usbOnly}<UsbLock />{/if}
+  <div class="inner" inert={usbOnly}>
   {#if power}
     <SettingRow
       setting={power}
@@ -91,6 +98,7 @@
       </button>
     {/if}
   {/if}
+  </div>
 </div>
 
 <footer>
@@ -111,6 +119,13 @@
   }
   .rows {
     flex: 1;
+    position: relative;
+  }
+  /* The glass reaches a little beyond the rows so it reads as a pane. */
+  .rows.locked {
+    border-radius: 14px;
+    margin: 0 -8px;
+    padding: 0 8px;
   }
   /* Same height with and without the selector, so switching noise
      reduction on or off never moves the buttons below. */

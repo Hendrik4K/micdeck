@@ -27,6 +27,7 @@
       startMicTest: () => void;
       stopMicTest: () => void;
       setSetting: (id: string, value: string) => void;
+      setJack: (nodeName: string) => void;
     };
     go: (page: Page) => void;
   } = $props();
@@ -54,7 +55,7 @@
 </script>
 
 <div class="page">
-  <Stage {snapshot} {images} />
+  <Stage {snapshot} {images} onjack={actions.setJack} />
   <div class="columns">
     <LevelMeter
       frame={level}
@@ -82,6 +83,7 @@
           onmore={() => go("device")}
           testable={snapshot.audio.source !== null && !snapshot.simulated}
           ontest={startTest}
+          usbOnly={snapshot.connection === "jack"}
         />
       </div>
       {#if showTest}

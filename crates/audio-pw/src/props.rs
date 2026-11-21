@@ -21,6 +21,9 @@ pub struct NodeProps {
     pub description: Option<String>,
     pub device_id: Option<u32>,
     pub alsa_card: Option<u32>,
+    /// `api.alsa.path`, e.g. `hw:Audio,0` – names the card also for nodes
+    /// set up by hand that carry no card number.
+    pub alsa_path: Option<String>,
     pub channels: Option<u32>,
     pub state: Option<NodeRunState>,
     pub muted: Option<bool>,
@@ -58,6 +61,9 @@ pub fn apply_node_props<'a>(node: &mut NodeProps, get: impl Fn(&str) -> Option<&
     // ALSA nodes made by WirePlumber carry `alsa.card`, older setups `api.alsa.card`.
     if let Some(card) = get("api.alsa.card").or_else(|| get("alsa.card")).and_then(|c| c.trim().parse().ok()) {
         node.alsa_card = Some(card);
+    }
+    if let Some(path) = get("api.alsa.path") {
+        node.alsa_path = Some(path.to_string());
     }
     if let Some(ch) = get("audio.channels").and_then(|c| c.trim().parse().ok()) {
         node.channels = Some(ch);

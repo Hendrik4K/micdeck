@@ -98,6 +98,18 @@ fn start_page() -> Option<String> {
     std::env::args().find_map(|a| a.strip_prefix("--page=").map(str::to_string))
 }
 
+/// Switch to another jack input (click on „Klinke“) and remember it.
+#[tauri::command]
+fn set_jack_input(node_name: String, app: AppHandle, engine: tauri::State<'_, Engine>) {
+    engine.set_jack_choice(Some(node_name.clone()));
+    if let Ok(mut s) = app.state::<SharedSettings>().lock() {
+        s.jack_input = Some(node_name);
+        if let Err(e) = settings::save(&s) {
+            log::warn!("could not save settings: {e}");
+        }
+    }
+}
+
 /// Change a receiver or transmitter setting; the steps show up in snapshots.
 #[tauri::command]
 fn set_device_setting(id: String, value: String, engine: tauri::State<'_, Engine>) {
@@ -493,6 +505,11 @@ fn main() {
                 }
             });
             let first = engine.snapshot().verdict;
+            // The jack input picked last time (receiver on its 3.5 mm output).
+            let jack = app.state::<SharedSettings>().lock().ok().and_then(|s| s.jack_input.clone());
+            if jack.is_some() {
+                engine.set_jack_choice(jack);
+            }
             app.manage(engine);
 
             let tray = tray::MicTray {
@@ -542,6 +559,7 @@ fn main() {
             start_mic_test,
             stop_mic_test,
             set_device_setting,
+            set_jack_input,
             get_app_settings,
             set_app_setting,
             start_page,

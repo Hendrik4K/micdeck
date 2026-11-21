@@ -170,12 +170,29 @@ pub struct AudioSource {
     /// Other programs recording from this input right now (MicDeck's own
     /// meter and microphone test are not listed).
     pub capture_apps: Vec<String>,
+    /// For an analog jack input: whether a plug sits in its socket, as the
+    /// sound card's jack detection reports it. `None`: no jack or unknown.
+    pub jack_plugged: Option<bool>,
 }
 
 impl AudioSource {
     /// True if this input belongs to a DJI USB device.
     pub fn is_dji(&self) -> bool {
         self.usb_vendor_id == Some(DJI_VENDOR_ID)
+    }
+
+    /// Short name of the socket for the jack switch: "Front", "Back", "Line".
+    pub fn jack_label(&self) -> String {
+        let name = self.node_name.to_ascii_lowercase();
+        if name.contains("klinke-vorne") || name.contains("front") {
+            "Front".into()
+        } else if name.contains("line") {
+            "Line".into()
+        } else if name.contains("mic") {
+            "Back".into()
+        } else {
+            self.description.clone()
+        }
     }
 }
 

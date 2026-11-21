@@ -161,6 +161,36 @@ pub struct AudioView {
     pub mic_test: MicTestState,
 }
 
+/// How the receiver reaches the PC.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Connection {
+    /// Not found at all.
+    None,
+    /// USB-C: sound and status data.
+    Usb,
+    /// 3.5 mm jack into an analog socket: sound only.
+    Jack,
+}
+
+/// One analog socket with a plug in it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JackOption {
+    pub node_name: String,
+    /// "Front", "Back", "Line" …
+    pub label: String,
+}
+
+/// The jack input in use and the others to switch to (jack mode only).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JackView {
+    pub node_name: String,
+    pub label: String,
+    pub options: Vec<JackOption>,
+}
+
 /// Everything the UI renders, produced by [`State::snapshot`].
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -169,6 +199,9 @@ pub struct Snapshot {
     pub simulated: bool,
     /// The demo scenario being shown, in demo mode.
     pub demo_label: Option<String>,
+    pub connection: Connection,
+    /// The jack input in use, in jack mode.
+    pub jack: Option<JackView>,
     pub verdict: Verdict,
     pub checks: Vec<Check>,
     pub receiver: Option<ReceiverView>,
@@ -245,7 +278,23 @@ impl State {
     /// Everything the UI shows, as of `now_ms`.
     pub fn snapshot(&self, now_ms: u64) -> Snapshot {
         let primary = self.primary();
-        let source = self.dji_source();
+        let source = self.active_source();
+        let jack = self.jack_source().map(|j| JackView {
+            node_name: j.node_name.clone(),
+            label: j.jack_label(),
+            options: self
+                .jack_inputs()
+                .into_iter()
+                .map(|s| JackOption { node_name: s.node_name.clone(), label: s.jack_label() })
+                .collect(),
+        });
+        let connection = if jack.is_some() {
+            Connection::Jack
+        } else if primary.is_some() || self.dji_source().is_some() {
+            Connection::Usb
+        } else {
+            Connection::None
+        };
         let status = primary.and_then(|p| p.live_status(now_ms));
         let signal = self.signal_view(now_ms);
 
@@ -329,6 +378,8 @@ impl State {
         Snapshot {
             simulated: self.simulated,
             demo_label: self.demo_label.clone(),
+            connection,
+            jack,
             verdict,
             checks: vec![usb_check, radio_check, audio_check, mute_check, default_check, signal_check],
             receiver: primary.map(|p| ReceiverView {
@@ -409,6 +460,14 @@ impl State {
         const USB: &str = "Empfänger (USB)";
         const RADIO: &str = "Funkverbindung";
 
+        if let Some(j) = self.jack_source() {
+            let usb = check(CheckId::Usb, CheckLevel::Ok, USB, format!("Über Klinke · {}", j.jack_label())).hint(
+                "Der Empfänger hängt am analogen Eingang: Ton kommt an, aber keine Daten. Akku, \
+                 Statuslämpchen und Geräteeinstellungen gibt es nur über USB-C.",
+            );
+            let radio = check(CheckId::Radio, CheckLevel::Inactive, RADIO, "Nur über USB-C");
+            return (usb, radio, Radio::NotApplicable);
+        }
         let Some(p) = primary else {
             let usb = if !self.usb_ready {
                 check(CheckId::Usb, CheckLevel::Pending, USB, "Wird gesucht …")
@@ -703,6 +762,9 @@ impl State {
                 "Nicht als Standard ausgewählt",
                 "Programme, die das Standard-Mikrofon nutzen, hören ein anderes Gerät.".into(),
             );
+        }
+        if let Some(j) = self.jack_source() {
+            return v(Level::Ok, "Einsatzbereit", format!("Über Klinke ({}) · Ton ohne Gerätedaten", j.jack_label()));
         }
         if let Some(t) = transmitters.iter().find(|t| t.battery.as_ref().is_some_and(|b| b.critical)) {
             return v(

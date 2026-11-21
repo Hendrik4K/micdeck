@@ -40,6 +40,9 @@ pub enum Input {
     MeterWanted(bool),
     /// Name of the demo scenario being shown (demo mode only).
     DemoLabel(String),
+    /// The jack input the user picked (`node.name`), for when the receiver is
+    /// connected by its 3.5 mm output instead of USB-C.
+    JackChoice(Option<String>),
 }
 
 #[derive(Debug, Clone)]
@@ -125,6 +128,8 @@ pub struct State {
     pub(crate) mic_test: MicTestState,
     /// Setting changes, oldest first.
     pub(crate) writes: VecDeque<WriteRecord>,
+    /// Preferred jack input (`node.name`), see [`Input::JackChoice`].
+    pub(crate) jack_choice: Option<String>,
 }
 
 impl State {
@@ -143,6 +148,7 @@ impl State {
             signal: SignalTracker::default(),
             mic_test: MicTestState::Idle,
             writes: VecDeque::new(),
+            jack_choice: None,
         }
     }
 
@@ -167,6 +173,7 @@ impl State {
                     self.demo_label = Some(label);
                 }
             }
+            Input::JackChoice(choice) => self.jack_choice = choice,
         }
     }
 
@@ -302,7 +309,49 @@ impl State {
 
     /// Whether `source` belongs to a DJI receiver.
     pub(crate) fn is_receiver_source(&self, source: &AudioSource) -> bool {
-        source.is_dji() || self.dji_source().is_some_and(|d| d.node_name == source.node_name)
+        source.is_dji() || self.active_source().is_some_and(|d| d.node_name == source.node_name)
+    }
+
+    /// Analog inputs with a plug in their socket (jack detection), Front first.
+    pub(crate) fn jack_inputs(&self) -> Vec<&AudioSource> {
+        let order = |s: &AudioSource| match s.jack_label().as_str() {
+            "Front" => 0,
+            "Back" => 1,
+            "Line" => 2,
+            _ => 3,
+        };
+        let mut jacks: Vec<&AudioSource> = self
+            .graph
+            .sources
+            .iter()
+            .filter(|s| !s.is_dji() && s.jack_plugged == Some(true))
+            .collect();
+        jacks.sort_by_key(|s| order(s));
+        jacks
+    }
+
+    /// Jack mode: no DJI receiver on USB, but a plug sits in an analog
+    /// socket – the receiver connected by its 3.5 mm output. Sound only.
+    pub fn jack_mode(&self) -> bool {
+        self.primary().is_none() && self.dji_source().is_none() && !self.jack_inputs().is_empty()
+    }
+
+    /// The jack input MicDeck uses in jack mode: the user's pick if it is
+    /// plugged, else the default input if it is one, else the first.
+    pub(crate) fn jack_source(&self) -> Option<&AudioSource> {
+        if !self.jack_mode() {
+            return None;
+        }
+        let jacks = self.jack_inputs();
+        let pick = |name: Option<&String>| name.and_then(|n| jacks.iter().copied().find(|s| &s.node_name == n));
+        pick(self.jack_choice.as_ref())
+            .or_else(|| pick(self.graph.default_source.as_ref()))
+            .or_else(|| jacks.first().copied())
+    }
+
+    /// The input MicDeck watches: the DJI receiver's (USB), else the jack input.
+    pub(crate) fn active_source(&self) -> Option<&AudioSource> {
+        self.dji_source().or_else(|| self.jack_source())
     }
 
     /// The input the level meter should measure right now, if any.
@@ -310,6 +359,6 @@ impl State {
         if !self.meter_wanted || self.audio_service != AudioService::Available {
             return None;
         }
-        self.dji_source().map(|s| s.node_name.clone())
+        self.active_source().map(|s| s.node_name.clone())
     }
 }

@@ -18,6 +18,6 @@ mod verdict;
 pub use model::*;
 pub use state::{Input, State};
 pub use verdict::{
-    AudioView, BatteryView, Check, CheckId, CheckLevel, Level, ReceiverView, SignalStatus,
+    AudioView, BatteryView, Check, CheckId, CheckLevel, Connection, JackOption, JackView, Level, ReceiverView, SignalStatus,
     SignalView, Snapshot, SourceRef, TransmitterView, Verdict,
 };

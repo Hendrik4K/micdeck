@@ -2,7 +2,8 @@
 // Never used inside the app; every value here is fake and labelled as such.
 // Pick a state with the URL hash: #ready (default), #no-tx, #unplugged, #no-permission,
 // #charging (transmitter 1 in its case), #test (microphone test recording), #muted,
-// #off (receiver switched off on USB), #low (microphone battery at half).
+// #off (receiver switched off on USB), #low (microphone battery at half),
+// #jack (receiver on its 3.5 mm output, front and back socket plugged).
 // `?images=<url>` loads receiver.webp and transmitter.webp from there instead
 // of the built-in silhouettes.
 
@@ -55,6 +56,11 @@ const values: Record<string, string> = {
 const log: WriteLogEntry[] = [];
 let pending: { id: string; value: string } | null = null;
 let muted = false;
+const JACKS = [
+  { nodeName: "alsa_input.klinke-vorne", label: "Front" },
+  { nodeName: "alsa_input.preview.HiFi__Mic__source", label: "Back" },
+];
+let jackAt = 0;
 let appSettings: AppSettings = {
   dockDictation: true, dockMute: false, autostart: false, autostartAvailable: true,
 };
@@ -83,6 +89,16 @@ function settingViews(kind: string): SettingView[] {
 function checks(kind: string): Check[] {
   const c = (id: Check["id"], level: Check["level"], label: string, value: string, hint: string | null = null): Check =>
     ({ id, level, label, value, hint });
+  if (kind === "jack") {
+    return [
+      c("usb", "ok", "Empfänger (USB)", `Über Klinke · ${JACKS[jackAt].label}`, "Akku, Statuslämpchen und Geräteeinstellungen gibt es nur über USB-C."),
+      c("radio", "inactive", "Funkverbindung", "Nur über USB-C"),
+      c("audioInput", "ok", "Audioeingang", `„Klinke ${JACKS[jackAt].label}“`),
+      c("mute", "ok", "Lautstärke", "100\u00a0% · nicht stumm"),
+      c("defaultInput", "ok", "Standard-Mikrofon", "Ist Standard-Mikrofon"),
+      c("signal", "ok", "Ton kommt an", "Normale Sprechlautstärke · Ø\u00a0−30\u00a0dB"),
+    ];
+  }
   if (kind === "off") {
     return [
       c("usb", "warn", "Empfänger (USB)", "Ausgeschaltet", "Taste am Empfänger kurz gedrückt halten, bis er sucht."),
@@ -119,7 +135,33 @@ function checks(kind: string): Check[] {
   ];
 }
 
+function jackSnapshot(): Snapshot {
+  const base = snapshot("unplugged");
+  const j = JACKS[jackAt];
+  const source = {
+    id: 7, nodeName: j.nodeName, description: `Klinke ${j.label}`, usbVendorId: null, usbProductId: null,
+    alsaCard: 4, state: "running" as const, muted, volume: 1, channels: 2, captureApps: [], jackPlugged: true,
+  };
+  const ref = { nodeName: j.nodeName, description: source.description, isDji: true };
+  return {
+    ...base,
+    connection: "jack",
+    jack: { nodeName: j.nodeName, label: j.label, options: JACKS },
+    verdict: { level: "ok", title: "Einsatzbereit", detail: `Über Klinke (${j.label}) · Ton ohne Gerätedaten` },
+    checks: checks("jack"),
+    audio: {
+      ...base.audio,
+      source,
+      defaultInput: ref,
+      inputs: [ref],
+      signal: { status: "present", peakDbfs: -14, loudnessDbfs: -30, loudness: "Normale Sprechlautstärke", silentForMs: null, clippedRecently: false },
+    },
+    meter: { kind: "running", nodeName: j.nodeName, channels: 2, rate: 48000 },
+  };
+}
+
 function snapshot(kind: string): Snapshot {
+  if (kind === "jack") return jackSnapshot();
   const tx = (unit: number, gauge: number): TransmitterView => ({
     unit,
     connected: kind === "no-permission" || kind === "unplugged" || kind === "off" ? null : kind !== "no-tx",
@@ -144,6 +186,8 @@ function snapshot(kind: string): Snapshot {
   return {
     simulated: true,
     demoLabel: "Browser-Vorschau",
+    connection: kind === "unplugged" ? "none" : "usb",
+    jack: null,
     verdict,
     checks: checks(kind),
     receiver: kind !== "unplugged"
@@ -170,6 +214,7 @@ function snapshot(kind: string): Snapshot {
         ? {
             id: 1, nodeName: NODE, description: "DJI Mic Mini (Vorschau)", usbVendorId: 0x2ca3, usbProductId: 0x4011,
             alsaCard: 5, state: "running", muted: muted || kind === "muted", volume: 1, channels: 2, captureApps: ["Firefox"],
+            jackPlugged: null,
           }
         : null,
       defaultInput: present ? { nodeName: NODE, description: "DJI Mic Mini (Vorschau)", isDji: true } : null,
@@ -239,6 +284,10 @@ export function previewBackend(): Backend {
     fitHeight: async () => {},
     setMuted: async (m) => {
       muted = m;
+      changed();
+    },
+    setJackInput: async (nodeName) => {
+      jackAt = Math.max(0, JACKS.findIndex((j) => j.nodeName === nodeName));
       changed();
     },
     startMicTest: async () => {},

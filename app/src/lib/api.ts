@@ -15,6 +15,8 @@ export interface Backend {
   stopMicTest(): Promise<void>;
   /** Change a receiver or transmitter setting; progress shows up in snapshots. */
   setDeviceSetting(id: string, value: string): Promise<void>;
+  /** Use this jack input (receiver on its 3.5 mm output); remembered. */
+  setJackInput(nodeName: string): Promise<void>;
   appSettings(): Promise<AppSettings>;
   setAppSetting(setting: AppSettingName, on: boolean): Promise<AppSettings>;
   /** Changes made elsewhere, e.g. in the panel menu. */
@@ -40,6 +42,7 @@ async function tauriBackend(): Promise<Backend> {
     startMicTest: () => invoke("start_mic_test"),
     stopMicTest: () => invoke("stop_mic_test"),
     setDeviceSetting: (id, value) => invoke("set_device_setting", { id, value }),
+    setJackInput: (nodeName) => invoke("set_jack_input", { nodeName }),
     appSettings: () => invoke<AppSettings>("get_app_settings"),
     setAppSetting: (setting, on) => invoke<AppSettings>("set_app_setting", { setting, on }),
     onAppSettings: (cb) => listen<AppSettings>("micdeck:app-settings", (e) => cb(e.payload)),

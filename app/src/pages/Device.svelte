@@ -5,6 +5,7 @@
   import { anyPending, byId, errorFor } from "../lib/settings";
   import receiverImg from "../assets/devices/stage-receiver.webp";
   import transmitterImg from "../assets/devices/stage-transmitter.webp";
+  import UsbLock from "../lib/UsbLock.svelte";
 
   let {
     snapshot,
@@ -33,6 +34,8 @@
     return reasons.size === 1 && only ? only : null;
   });
   const receiver = $derived(snapshot.receiver);
+  /** Receiver on the 3.5 mm jack: settings need USB-C, frosted glass over them. */
+  const usbOnly = $derived(snapshot.connection === "jack");
   const signed = (db: number) => (db > 0 ? `+${db}` : db < 0 ? `−${-db}` : "0");
 </script>
 
@@ -63,12 +66,13 @@
     </div>
   </section>
 
-  {#if banner}
+  {#if banner && !usbOnly}
     <p class="banner">{banner}</p>
   {/if}
 
   <div class="columns">
-    <section class="card rx">
+    <section class="card rx" class:locked={usbOnly}>
+      {#if usbOnly}<UsbLock />{/if}
       <h3 class="label-caps">RX-Einstellungen</h3>
       <!-- Scrolls inside the card; rows fade out at the edges. -->
       <div class="scroll">
@@ -85,7 +89,8 @@
     </section>
 
     <div class="stack">
-      <section class="card">
+      <section class="card" class:locked={usbOnly}>
+        {#if usbOnly}<UsbLock />{/if}
         <h3 class="label-caps">TX-Einstellungen</h3>
         {#each tx as setting (setting.id)}
           <SettingRow
@@ -161,6 +166,9 @@
 </div>
 
 <style>
+  .locked {
+    position: relative;
+  }
   .page {
     display: grid;
     grid-template-columns: minmax(0, 1fr);

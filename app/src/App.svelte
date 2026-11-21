@@ -212,6 +212,7 @@
     startMicTest: () => void backend?.startMicTest(),
     stopMicTest: () => void backend?.stopMicTest(),
     setSetting: (id: string, value: string) => void backend?.setDeviceSetting(id, value),
+    setJack: (nodeName: string) => void backend?.setJackInput(nodeName),
   };
 
   async function setAppSetting(setting: AppSettingName, on: boolean) {

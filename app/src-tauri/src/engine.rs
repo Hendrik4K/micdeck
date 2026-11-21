@@ -157,6 +157,11 @@ impl Engine {
         let _ = self.tx.send(Msg::SetSetting { id, value });
     }
 
+    /// Use this jack input (receiver connected by its 3.5 mm output).
+    pub fn set_jack_choice(&self, node_name: Option<String>) {
+        let _ = self.tx.send(Msg::Input(Input::JackChoice(node_name)));
+    }
+
     pub fn set_meter_wanted(&self, wanted: bool) {
         let _ = self.tx.send(Msg::Input(Input::MeterWanted(wanted)));
     }

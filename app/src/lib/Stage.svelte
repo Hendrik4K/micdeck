@@ -5,8 +5,23 @@
   // THIRD_PARTY.md). The user's own pictures replace them.
   import receiverImg from "../assets/devices/stage-receiver.webp";
   import transmitterImg from "../assets/devices/stage-transmitter.webp";
+  import UsbLock from "./UsbLock.svelte";
 
-  let { snapshot, images }: { snapshot: Snapshot; images: DeviceImages } = $props();
+  let {
+    snapshot,
+    images,
+    onjack,
+  }: { snapshot: Snapshot; images: DeviceImages; onjack?: (nodeName: string) => void } = $props();
+
+  /** Receiver on its 3.5 mm output: sound, but no status data. */
+  const jackMode = $derived(snapshot.connection === "jack" && snapshot.jack !== null);
+  /** The socket a click on „Klinke“ switches to, if there is another one. */
+  const nextJack = $derived.by(() => {
+    const j = snapshot.jack;
+    if (!j || j.options.length < 2) return null;
+    const i = j.options.findIndex((o) => o.nodeName === j.nodeName);
+    return j.options[(i + 1) % j.options.length];
+  });
 
   const usb = $derived(snapshot.checks.find((c) => c.id === "usb"));
   const tx1 = $derived(snapshot.transmitters.find((t) => t.unit === 1));
@@ -79,7 +94,19 @@
     <ul class="units" bind:this={unitsEl}>
       <li>
         <span class="name">Empfänger</span>
-        {#if mark(usb) === "ok"}
+        {#if jackMode && snapshot.jack}
+          <!-- Hover names the socket, a click moves to the next plugged one. -->
+          <button
+            class="jack"
+            class:switchable={nextJack !== null}
+            disabled={nextJack === null}
+            onclick={() => nextJack && onjack?.(nextJack.nodeName)}
+            title={nextJack ? `Klicken: zu Klinke ${nextJack.label} wechseln` : `Über Klinke ${snapshot.jack.label} verbunden`}
+          >
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5v5M6 6.5h4v3.2a2 2 0 0 1-4 0zM8 11.7v2.8" /></svg>
+            <span>Klinke</span><span class="where">&nbsp;{snapshot.jack.label}</span>
+          </button>
+        {:else if mark(usb) === "ok"}
           <span class="ok-dot" title={usb?.value}>
             <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 8.5l2.6 2.6L12 5.5" /></svg>
           </span>
@@ -89,9 +116,12 @@
       </li>
       <!-- Only transmitter 1 for now: most people use one microphone. -->
       {#each snapshot.transmitters.filter((t) => t.unit === 1) as tx (tx.unit)}
-        <li class:dim={tx.connected !== true}>
+        <li class:dim={tx.connected !== true && !jackMode}>
           <span class="name">{tx.unit === 1 ? "Mikrofon" : `Mikrofon ${tx.unit}`}</span>
-          {#if tx.connected === true}
+          {#if jackMode}
+            <!-- Battery and radio state only come over USB-C. -->
+            <UsbLock chip />
+          {:else if tx.connected === true}
             <!-- The battery only shows once it matters (half or less) or while
                  charging; otherwise a tick says the microphone is connected. -->
             {#if tx.battery && (tx.charging === true || tx.battery.gauge >= 4)}
@@ -146,13 +176,13 @@
     {/if}
   {/snippet}
 
-  <div class="devices" class:absent={!snapshot.receiver} aria-hidden="true">
+  <div class="devices" class:absent={!snapshot.receiver && !jackMode} aria-hidden="true">
     <div class="txwrap">
       <div class="pic" style:width="{txBox.w}px" style:height="{txBox.h}px">
         <img
           class="tx"
           class:custom={images.transmitter !== null}
-          class:off={!linked}
+          class:off={!linked && !jackMode}
           src={images.transmitter ?? transmitterImg}
           alt=""
           onload={(e) => (txRatio = ratioOf(e.currentTarget))}
@@ -259,6 +289,53 @@
   .value {
     color: var(--text-2);
     font-size: 15px;
+  }
+  /* "Klinke": green like the tick for USB-C; the socket name slides in on hover. */
+  .jack {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 12px 3px 9px;
+    border-radius: 999px;
+    border: 1.5px solid color-mix(in srgb, var(--ok) 55%, transparent);
+    background: color-mix(in srgb, var(--ok) 12%, transparent);
+    color: var(--ok);
+    font: inherit;
+    font-size: 13.5px;
+    font-weight: 700;
+    cursor: default;
+    transition: background 150ms, border-color 150ms;
+  }
+  .jack.switchable {
+    cursor: pointer;
+  }
+  .jack.switchable:hover {
+    background: color-mix(in srgb, var(--ok) 22%, transparent);
+    border-color: var(--ok);
+  }
+  .jack:disabled {
+    opacity: 1;
+  }
+  .jack svg {
+    width: 14px;
+    height: 14px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.7;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .jack .where {
+    display: inline-block;
+    max-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    opacity: 0;
+    transition: max-width 220ms ease, opacity 220ms ease;
+  }
+  .jack:hover .where {
+    max-width: 60px;
+    opacity: 1;
   }
   .ok-dot {
     display: grid;
