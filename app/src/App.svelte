@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, tick } from "svelte";
-  import { connect, type Backend } from "./lib/api";
+  import { connect, type Backend, type DeviceName } from "./lib/api";
   import type { AppSettingName, AppSettings, CheckLevel, DeviceImages, LevelFrame, Snapshot } from "./lib/types";
   import Nav, { type Page } from "./lib/Nav.svelte";
   import Overview from "./pages/Overview.svelte";
@@ -213,6 +213,13 @@
     stopMicTest: () => void backend?.stopMicTest(),
     setSetting: (id: string, value: string) => void backend?.setDeviceSetting(id, value),
     setJack: (nodeName: string) => void backend?.setJackInput(nodeName),
+    restart: () => void backend?.restartReceiver(),
+    setImage: async (device: DeviceName, file: File) => {
+      if (backend) images = await backend.setDeviceImage(device, file);
+    },
+    resetImage: async (device: DeviceName) => {
+      if (backend) images = await backend.resetDeviceImage(device);
+    },
   };
 
   async function setAppSetting(setting: AppSettingName, on: boolean) {
@@ -307,7 +314,7 @@
       {#if page === "overview"}
         <Overview {snapshot} {level} {images} labels={channelLabels} {now} {actions} {go} />
       {:else if page === "device"}
-        <Device {snapshot} {images} {now} onchange={actions.setSetting} />
+        <Device {snapshot} {images} {now} onchange={actions.setSetting} onrestart={actions.restart} />
       {:else if page === "diagnose"}
         <Diagnose {snapshot} />
       {:else}

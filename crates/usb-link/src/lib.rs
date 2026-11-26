@@ -70,6 +70,11 @@ impl Drop for UsbWatcher {
     }
 }
 
+/// Setting id of a [`WriteRequest`] that restarts the receiver; `value` is
+/// the plug-free speaker value to write (always the current one).
+pub use micdeck_core::device_settings::RESTART;
+const PLUG_FREE: &str = "plug-free";
+
 /// Start watching the bus. Events go to `sink` from background threads.
 pub fn spawn(sink: Sink) -> UsbWatcher {
     let stop = Arc::new(AtomicBool::new(false));
@@ -480,7 +485,10 @@ impl Actor {
         seq: &mut u16,
     ) -> Option<InFlight> {
         let reject = |reason: &str| report(&request, WritePhase::Rejected { reason: reason.into() });
-        if !writable(&request.setting, &request.value) {
+        // Restart (see RESTART): the plug-free speaker setting, which reboots
+        // the receiver when it is written – the only known way to restart it.
+        let setting = if request.setting == RESTART { PLUG_FREE } else { request.setting.as_str() };
+        if request.setting != RESTART && !writable(&request.setting, &request.value) {
             self.emit(reject("MicDeck sendet diese Einstellung nicht."));
             return None;
         }
@@ -488,7 +496,7 @@ impl Actor {
             self.emit(reject("Der Empfänger hat sich noch nicht gemeldet."));
             return None;
         };
-        let Some(command) = self.model.build_command(*seq, dialect, &request.setting, &request.value, None) else {
+        let Some(command) = self.model.build_command(*seq, dialect, setting, &request.value, None) else {
             self.emit(reject("Mit dieser Firmware nicht möglich."));
             return None;
         };

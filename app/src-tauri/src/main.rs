@@ -5,6 +5,7 @@ mod device_images;
 mod device_log;
 mod dictation;
 mod engine;
+mod panel_bus;
 mod settings;
 mod tray;
 
@@ -92,10 +93,33 @@ fn device_images() -> device_images::DeviceImages {
     device_images::load_all()
 }
 
+/// Copies a picture the user picked into `~/.config/micdeck/devices/`.
+/// The bytes come as the raw request body, the device in a header.
+#[tauri::command]
+fn set_device_image(request: tauri::ipc::Request<'_>) -> Result<device_images::DeviceImages, String> {
+    let device = request.headers().get("device").and_then(|v| v.to_str().ok()).unwrap_or_default();
+    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
+        return Err("expected the picture as raw bytes".into());
+    };
+    device_images::save(device, bytes)
+}
+
+/// Back to the built-in picture of `device`.
+#[tauri::command]
+fn reset_device_image(device: String) -> Result<device_images::DeviceImages, String> {
+    device_images::reset(&device)
+}
+
 /// The page to open first, from `--page=<name>` (e.g. `device`), if given.
 #[tauri::command]
 fn start_page() -> Option<String> {
     std::env::args().find_map(|a| a.strip_prefix("--page=").map(str::to_string))
+}
+
+/// Restart the receiver (button on the settings page, panel menu).
+#[tauri::command]
+fn restart_receiver(engine: tauri::State<'_, Engine>) {
+    engine.restart_receiver();
 }
 
 /// Switch to another jack input (click on „Klinke“) and remember it.
@@ -151,7 +175,40 @@ pub(crate) fn change_app_setting(app: &AppHandle, setting: AppSetting, on: bool,
     if !from_tray && let Some(tray) = app.try_state::<TrayState>().and_then(|t| t.0.clone()) {
         tray.update(|_| {});
     }
+    refresh_panel_settings(app);
     let _ = app.emit("micdeck:app-settings", app_settings(app));
+}
+
+/// MicDeck's own settings, as the applet shows them.
+fn refresh_panel_settings(app: &AppHandle) {
+    let (dock_dictation, dock_mute) = dock_settings(app);
+    let autostart = settings::autostart_enabled();
+    panel_bus::update(|p| {
+        p.dock_dictation = dock_dictation;
+        p.dock_mute = dock_mute;
+        p.autostart = autostart;
+    });
+}
+
+/// What the applet needs from a snapshot.
+fn publish_panel(_app: &AppHandle, snapshot: &Snapshot) {
+    let v = &snapshot.verdict;
+    let level = serde_json::to_value(v.level).ok().and_then(|l| l.as_str().map(str::to_owned)).unwrap_or_default();
+    panel_bus::update(|p| {
+        p.level = level;
+        p.title = v.title.clone();
+        p.detail = v.detail.clone();
+        p.muted = snapshot.audio.source.as_ref().and_then(|s| s.muted);
+        p.receiver = snapshot.receiver.is_some();
+        p.receiver_off = snapshot.receiver.as_ref().is_some_and(|r| r.switched_off);
+        p.restarting = snapshot.restarting;
+        p.capturing = snapshot.audio.source.as_ref().is_some_and(|s| !s.capture_apps.is_empty());
+        p.input = snapshot.audio.default_input.as_ref().map(|i| i.description.clone());
+        p.simulated = snapshot.simulated;
+        if p.dictation.is_empty() {
+            p.dictation = "idle".into();
+        }
+    });
 }
 
 /// Watches a mute MicDeck made, to warn when another program lifts it.
@@ -328,6 +385,13 @@ static ANIMATING: AtomicBool = AtomicBool::new(false);
 /// redraw thread that ends by itself when the icon is back to normal.
 fn set_dictation_phase(app: &AppHandle, phase: tray::DictationPhase) {
     use tray::DictationPhase;
+    let name = match phase {
+        DictationPhase::Idle => "idle",
+        DictationPhase::Recording { .. } => "recording",
+        DictationPhase::Sending { .. } => "sending",
+        DictationPhase::Sent { .. } => "sent",
+    };
+    panel_bus::update(|p| p.dictation = name.into());
     let Some(tray) = app.try_state::<TrayState>().and_then(|t| t.0.clone()) else { return };
     tray.update(|t| t.dictation = phase);
     if !phase.animated() || ANIMATING.swap(true, Ordering::SeqCst) {
@@ -489,10 +553,12 @@ fn main() {
                             *last = Some(tray_text);
                         }
                         drop(last);
+                        publish_panel(&handle, &snapshot);
                         handle.emit("micdeck:snapshot", snapshot)
                     }
                     Output::Level(frame) => {
                         tray_level(&handle, &frame);
+                        panel_bus::level(frame.peak_dbfs.iter().copied().fold(f32::NEG_INFINITY, f32::max));
                         handle.emit("micdeck:level", frame)
                     }
                     Output::Dock(event) => {
@@ -520,6 +586,7 @@ fn main() {
                 dictation: tray::DictationPhase::Idle,
                 muted: None,
                 level_text: None,
+                hidden: false,
             }
             .spawn();
             let tray = match tray {
@@ -531,6 +598,17 @@ fn main() {
             };
             let has_tray = tray.is_some();
             app.manage(TrayState(tray));
+            // The Cinnamon applet: while it runs, the panel icon steps aside.
+            let applet_app = app.handle().clone();
+            panel_bus::start(app.handle().clone(), move |present| {
+                if let Some(tray) = applet_app.try_state::<TrayState>().and_then(|t| t.0.clone()) {
+                    tray.update(|t| t.hidden = present);
+                }
+                if present {
+                    applet_app.state::<Engine>().set_meter_wanted(true);
+                }
+            });
+            refresh_panel_settings(app.handle());
             if has_tray {
                 TRAY_LEVEL.store(true, Ordering::SeqCst);
                 app.state::<Engine>().set_meter_wanted(true);
@@ -560,10 +638,13 @@ fn main() {
             stop_mic_test,
             set_device_setting,
             set_jack_input,
+            restart_receiver,
             get_app_settings,
             set_app_setting,
             start_page,
-            device_images
+            device_images,
+            set_device_image,
+            reset_device_image
         ])
         .run(tauri::generate_context!())
         .expect("MicDeck could not start");

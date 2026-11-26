@@ -7,7 +7,7 @@
 use ksni::menu::{CheckmarkItem, StandardItem};
 use std::time::{Duration, Instant};
 
-use ksni::{Icon, MenuItem, ToolTip, Tray};
+use ksni::{Icon, MenuItem, Status, ToolTip, Tray};
 use micdeck_core::Level;
 use tauri::{AppHandle, Manager};
 
@@ -25,6 +25,8 @@ pub struct MicTray {
     /// Live level for the tooltip (see [`level_text`]); `None` while nothing
     /// is measured.
     pub level_text: Option<String>,
+    /// The Cinnamon applet shows MicDeck instead (see `panel_bus`).
+    pub hidden: bool,
 }
 
 /// The peak level as a small bar for the tooltip, e.g. `▮▮▮▮▮▮▯▯▯▯▯▯  −31 dBFS`.
@@ -160,6 +162,10 @@ impl Tray for MicTray {
         "MicDeck".into()
     }
 
+    fn status(&self) -> Status {
+        if self.hidden { Status::Passive } else { Status::Active }
+    }
+
     fn icon_pixmap(&self) -> Vec<Icon> {
         match self.dictation {
             DictationPhase::Recording { since } => sonar(since.elapsed()),
@@ -247,6 +253,16 @@ impl Tray for MicTray {
                 checked: autostart,
                 activate: Box::new(move |t: &mut Self| {
                     crate::change_app_setting(&t.app, AppSetting::Autostart, !autostart, true)
+                }),
+                ..Default::default()
+            }
+            .into(),
+            StandardItem {
+                label: "Empfänger neu starten".into(),
+                activate: Box::new(|t: &mut Self| {
+                    if let Some(engine) = t.app.try_state::<crate::engine::Engine>() {
+                        engine.restart_receiver();
+                    }
                 }),
                 ..Default::default()
             }

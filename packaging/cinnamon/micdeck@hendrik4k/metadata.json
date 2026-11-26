@@ -1,0 +1,8 @@
+{
+    "uuid": "micdeck@hendrik4k",
+    "name": "MicDeck",
+    "description": "DJI Mic Mini in the panel: status, live level and mute in a menu that opens on hover. Needs the MicDeck app.",
+    "max-instances": 1,
+    "version": "1.0",
+    "website": "https://github.com/Hendrik4K/micdeck"
+}

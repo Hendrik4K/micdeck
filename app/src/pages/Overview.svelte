@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { DeviceImages, LevelFrame, Snapshot } from "../lib/types";
+  import type { DeviceName } from "../lib/api";
   import type { Page } from "../lib/Nav.svelte";
   import Stage from "../lib/Stage.svelte";
   import LevelMeter from "../lib/LevelMeter.svelte";
@@ -28,6 +29,8 @@
       stopMicTest: () => void;
       setSetting: (id: string, value: string) => void;
       setJack: (nodeName: string) => void;
+      setImage: (device: DeviceName, file: File) => Promise<void>;
+      resetImage: (device: DeviceName) => Promise<void>;
     };
     go: (page: Page) => void;
   } = $props();
@@ -55,7 +58,7 @@
 </script>
 
 <div class="page">
-  <Stage {snapshot} {images} onjack={actions.setJack} />
+  <Stage {snapshot} {images} onjack={actions.setJack} onimage={actions.setImage} onresetimage={actions.resetImage} />
   <div class="columns">
     <LevelMeter
       frame={level}

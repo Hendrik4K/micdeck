@@ -278,7 +278,7 @@ checksum = "1505bd5d3d116872e7271a6d4e16d81d0c8570876c8de68093a09ac269d8aac0"
 
 [[package]]
 name = "audio-pw"
-version = "0.1.35"
+version = "0.1.39"
 dependencies = [
  "log",
  "micdeck-core",
@@ -917,7 +917,7 @@ dependencies = [
 
 [[package]]
 name = "dji-protocol"
-version = "0.1.35"
+version = "0.1.39"
 dependencies = [
  "serde",
  "serde_json",
@@ -2249,7 +2249,7 @@ dependencies = [
 
 [[package]]
 name = "micdeck"
-version = "0.1.35"
+version = "0.1.39"
 dependencies = [
  "audio-pw",
  "base64 0.22.1",
@@ -2264,11 +2264,12 @@ dependencies = [
  "tauri-plugin-single-instance",
  "usb-link",
  "x11rb",
+ "zbus",
 ]
 
 [[package]]
 name = "micdeck-core"
-version = "0.1.35"
+version = "0.1.39"
 dependencies = [
  "dji-protocol",
  "serde",
@@ -4352,7 +4353,7 @@ dependencies = [
 
 [[package]]
 name = "usb-link"
-version = "0.1.35"
+version = "0.1.39"
 dependencies = [
  "dji-protocol",
  "futures-lite",

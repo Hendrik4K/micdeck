@@ -5,10 +5,10 @@
 // #off (receiver switched off on USB), #low (microphone battery at half),
 // #jack (receiver on its 3.5 mm output, front and back socket plugged).
 // `?images=<url>` loads receiver.webp and transmitter.webp from there instead
-// of the built-in silhouettes.
+// of the built-in pictures.
 
 import type { Backend } from "./api";
-import type { AppSettings, Check, LevelFrame, SettingView, Snapshot, TransmitterView, WriteLogEntry } from "./types";
+import type { AppSettings, Check, DeviceImages, LevelFrame, SettingView, Snapshot, TransmitterView, WriteLogEntry } from "./types";
 
 const NODE = "preview.dji-mic-mini.input";
 
@@ -61,6 +61,8 @@ const JACKS = [
   { nodeName: "alsa_input.preview.HiFi__Mic__source", label: "Back" },
 ];
 let jackAt = 0;
+let images: DeviceImages = { receiver: null, transmitter: null, leds: null };
+let restartUntil = 0;
 let appSettings: AppSettings = {
   dockDictation: true, dockMute: false, autostart: false, autostartAvailable: true,
 };
@@ -162,6 +164,14 @@ function jackSnapshot(): Snapshot {
 
 function snapshot(kind: string): Snapshot {
   if (kind === "jack") return jackSnapshot();
+  if (Date.now() < restartUntil) {
+    const s = snapshotOf(kind);
+    return { ...s, restarting: true, verdict: { level: "pending", title: "Startet neu …", detail: "Der Empfänger startet neu – das Mikrofon verbindet sich gleich wieder." } };
+  }
+  return snapshotOf(kind);
+}
+
+function snapshotOf(kind: string): Snapshot {
   const tx = (unit: number, gauge: number): TransmitterView => ({
     unit,
     connected: kind === "no-permission" || kind === "unplugged" || kind === "off" ? null : kind !== "no-tx",
@@ -187,6 +197,7 @@ function snapshot(kind: string): Snapshot {
     simulated: true,
     demoLabel: "Browser-Vorschau",
     connection: kind === "unplugged" ? "none" : "usb",
+    restarting: false,
     jack: null,
     verdict,
     checks: checks(kind),
@@ -286,6 +297,11 @@ export function previewBackend(): Backend {
       muted = m;
       changed();
     },
+    restartReceiver: async () => {
+      restartUntil = Date.now() + 6000;
+      changed();
+      window.setTimeout(changed, 6100);
+    },
     setJackInput: async (nodeName) => {
       jackAt = Math.max(0, JACKS.findIndex((j) => j.nodeName === nodeName));
       changed();
@@ -320,9 +336,20 @@ export function previewBackend(): Backend {
     startPage: async () => null,
     deviceImages: async () => {
       const base = new URLSearchParams(location.search).get("images");
-      if (!base) return { receiver: null, transmitter: null, leds: null };
-      const leds = await fetch(`${base}/leds.json`).then((r) => (r.ok ? r.json() : null)).catch(() => null);
-      return { receiver: `${base}/receiver.webp`, transmitter: `${base}/transmitter.webp`, leds };
+      if (base) {
+        const leds = await fetch(`${base}/leds.json`).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+        images = { receiver: `${base}/receiver.webp`, transmitter: `${base}/transmitter.webp`, leds };
+      }
+      return images;
+    },
+    // Preview only: the picture stays in this tab.
+    setDeviceImage: async (device, file) => {
+      images = { ...images, [device]: URL.createObjectURL(file), leds: images.leds ? { ...images.leds, [device]: undefined } : null };
+      return images;
+    },
+    resetDeviceImage: async (device) => {
+      images = { ...images, [device]: null };
+      return images;
     },
   };
 }

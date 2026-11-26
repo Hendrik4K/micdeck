@@ -163,6 +163,13 @@ pub const SPECS: &[Spec] = &[
     },
 ];
 
+/// Setting id of a write that restarts the receiver instead of changing a
+/// setting. The receiver reboots whenever its plug-free speaker setting is
+/// written – even with the value it already has (checked on real hardware:
+/// back with the microphone connected after about 6 s). That is the only
+/// known way to restart it; the value sent is always the current one.
+pub const RESTART: &str = "receiver-restart";
+
 /// The spec for `id`, if MicDeck shows that setting.
 pub fn spec(id: &str) -> Option<&'static Spec> {
     SPECS.iter().find(|s| s.id == id)

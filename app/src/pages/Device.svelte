@@ -12,12 +12,19 @@
     images,
     now,
     onchange,
+    onrestart,
   }: {
     snapshot: Snapshot;
     images: DeviceImages;
     now: number;
     onchange: (id: string, value: string) => void;
+    /** Restart the receiver (about 6 s without sound). */
+    onrestart?: () => void;
   } = $props();
+  /** Restarting needs the receiver on USB-C with live status data. */
+  const canRestart = $derived(
+    snapshot.connection === "usb" && snapshot.receiver?.telemetryLive === true && !snapshot.restarting && !snapshot.simulated,
+  );
 
   const settings = $derived(snapshot.deviceSettings);
   // Only what MicDeck can change; the plug-free speaker is shown under "Nur
@@ -57,9 +64,25 @@
         {/each}
       </div>
       <p class="sub">
-        {#if receiver?.firmware}Firmware {receiver.firmware}{receiver.protocolVersion ? ` · Protokoll v${receiver.protocolVersion}` : ""}{:else}Keine Gerätedaten{/if}
+        {#if snapshot.restarting}Startet neu …{:else if receiver?.firmware}Firmware {receiver.firmware}{receiver.protocolVersion ? ` · Protokoll v${receiver.protocolVersion}` : ""}{:else}Keine Gerätedaten{/if}
       </p>
     </div>
+    {#if onrestart && snapshot.connection !== "jack"}
+      <button
+        class="restart"
+        class:busy={snapshot.restarting}
+        disabled={!canRestart}
+        onclick={onrestart}
+        title={canRestart
+          ? "Startet den Empfänger neu (ca. 6 Sekunden ohne Ton). Hilft, wenn sich das Mikrofon nicht wieder verbindet."
+          : snapshot.restarting
+            ? "Der Empfänger startet gerade neu."
+            : "Geht nur, wenn der Empfänger per USB-C verbunden ist und Statusdaten sendet."}
+      >
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M13 8a5 5 0 1 1-1.5-3.6" /><path d="M13 2.5v3h-3" /></svg>
+        {snapshot.restarting ? "Startet neu …" : "Empfänger neu starten"}
+      </button>
+    {/if}
     <div class="pics" aria-hidden="true">
       <img class:custom={images.transmitter !== null} src={images.transmitter ?? transmitterImg} alt="" />
       <img class:custom={images.receiver !== null} src={images.receiver ?? receiverImg} alt="" />
@@ -183,6 +206,51 @@
   .who {
     flex: 1;
     min-width: 0;
+  }
+  .restart {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 7px 13px 7px 10px;
+    border-radius: 10px;
+    border: 1.5px solid var(--line-2);
+    background: transparent;
+    color: var(--text);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: border-color 120ms, background 120ms;
+  }
+  .restart:hover:not(:disabled) {
+    border-color: var(--text-2);
+    background: rgba(255, 255, 255, 0.03);
+  }
+  .restart:disabled {
+    opacity: 0.45;
+    cursor: default;
+  }
+  .restart.busy {
+    opacity: 1;
+    color: var(--text-2);
+  }
+  .restart svg {
+    width: 15px;
+    height: 15px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.7;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .restart.busy svg {
+    animation: spin 1s linear infinite;
+  }
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
   }
   h2 {
     margin: 0 0 8px;

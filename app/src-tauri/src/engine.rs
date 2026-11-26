@@ -62,6 +62,8 @@ enum Msg {
     MicTestStop,
     /// Change a receiver or transmitter setting (user request).
     SetSetting { id: String, value: String },
+    /// Restart the receiver (user request).
+    Restart,
     /// Start over with an empty state (demo scenario change).
     Reset,
 }
@@ -157,6 +159,11 @@ impl Engine {
         let _ = self.tx.send(Msg::SetSetting { id, value });
     }
 
+    /// Restart the receiver; the snapshot shows "Startet neu …" meanwhile.
+    pub fn restart_receiver(&self) {
+        let _ = self.tx.send(Msg::Restart);
+    }
+
     /// Use this jack input (receiver connected by its 3.5 mm output).
     pub fn set_jack_choice(&self, node_name: Option<String>) {
         let _ = self.tx.send(Msg::Input(Input::JackChoice(node_name)));
@@ -247,6 +254,18 @@ fn run(
                 }
             }
             Ok(Msg::MicTestStop) => control.stop_mic_test(),
+            Ok(Msg::Restart) => match state.restart_target(now()) {
+                Ok((key, value)) if !simulated => {
+                    log::info!("restarting receiver {key}");
+                    next_request += 1;
+                    state.apply(Input::RestartRequested, now());
+                    let request =
+                        WriteRequest { request: next_request, setting: micdeck_core::device_settings::RESTART.into(), value };
+                    control.write_setting(key, request);
+                }
+                Ok(_) => log::info!("demo mode: no receiver to restart"),
+                Err(reason) => log::info!("cannot restart the receiver: {reason}"),
+            },
             Ok(Msg::Reset) => {
                 state = State::new(simulated);
                 state.apply(Input::MeterWanted(meter_wanted), now());

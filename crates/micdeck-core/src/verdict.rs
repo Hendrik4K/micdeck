@@ -200,6 +200,8 @@ pub struct Snapshot {
     /// The demo scenario being shown, in demo mode.
     pub demo_label: Option<String>,
     pub connection: Connection,
+    /// The receiver is restarting (requested by the user).
+    pub restarting: bool,
     /// The jack input in use, in jack mode.
     pub jack: Option<JackView>,
     pub verdict: Verdict,
@@ -379,6 +381,7 @@ impl State {
             simulated: self.simulated,
             demo_label: self.demo_label.clone(),
             connection,
+            restarting: self.restarting(now_ms),
             jack,
             verdict,
             checks: vec![usb_check, radio_check, audio_check, mute_check, default_check, signal_check],
@@ -710,6 +713,13 @@ impl State {
                 Level::Error,
                 "Audiosystem nicht erreichbar",
                 "PipeWire läuft nicht – gerade kann kein Programm aufnehmen.".into(),
+            );
+        }
+        if self.restarting(now_ms) {
+            return v(
+                Level::Pending,
+                "Startet neu …",
+                "Der Empfänger startet neu – das Mikrofon verbindet sich gleich wieder.".into(),
             );
         }
         if !self.usb_ready || self.audio_service == AudioService::Connecting {

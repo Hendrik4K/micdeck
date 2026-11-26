@@ -1,17 +1,80 @@
 <script lang="ts">
   import { tick } from "svelte";
   import type { Check, DeviceImages, LedLayout, LedSpot, Snapshot } from "./types";
-  // Built-in placeholders: silhouettes of the devices (AI-generated, see
+  // Built-in pictures of the devices (AI-generated, logos blurred, see
   // THIRD_PARTY.md). The user's own pictures replace them.
   import receiverImg from "../assets/devices/stage-receiver.webp";
   import transmitterImg from "../assets/devices/stage-transmitter.webp";
   import UsbLock from "./UsbLock.svelte";
+  import type { DeviceName } from "./api";
+  // Handwriting for the "hold to switch on" note (OFL, see THIRD_PARTY.md).
+  import "@fontsource/caveat/latin-600.css";
 
   let {
     snapshot,
     images,
     onjack,
-  }: { snapshot: Snapshot; images: DeviceImages; onjack?: (nodeName: string) => void } = $props();
+    onimage,
+    onresetimage,
+  }: {
+    snapshot: Snapshot;
+    images: DeviceImages;
+    onjack?: (nodeName: string) => void;
+    /** Without these the pictures can't be changed (no ring on hover). */
+    onimage?: (device: DeviceName, file: File) => Promise<void>;
+    onresetimage?: (device: DeviceName) => Promise<void>;
+  } = $props();
+
+  // Own picture: rest the pointer on a device. After 1 s a ring fades in and
+  // fills its first quarter by 2 s, closes by 5 s, then offers the upload.
+  type EditPhase = "idle" | "arming" | "shown";
+  const ARM_MS = 5000;
+  let edit = $state<Record<DeviceName, EditPhase>>({ receiver: "idle", transmitter: "idle" });
+  const armTimer: Partial<Record<DeviceName, number>> = {};
+  const leaveTimer: Partial<Record<DeviceName, number>> = {};
+  let picker = $state<HTMLInputElement | null>(null);
+  let picking: DeviceName | null = null;
+  let imageError = $state<{ device: DeviceName; text: string } | null>(null);
+
+  function editEnter(device: DeviceName) {
+    clearTimeout(leaveTimer[device]);
+    if (edit[device] !== "idle") return;
+    edit[device] = "arming";
+    armTimer[device] = window.setTimeout(() => (edit[device] = "shown"), ARM_MS);
+  }
+  function editLeave(device: DeviceName) {
+    clearTimeout(armTimer[device]);
+    // A short grace period, so brushing the edge doesn't restart the ring.
+    leaveTimer[device] = window.setTimeout(() => {
+      edit[device] = "idle";
+      if (imageError?.device === device) imageError = null;
+    }, 250);
+  }
+  function pick(device: DeviceName) {
+    picking = device;
+    imageError = null;
+    picker?.click();
+  }
+  async function picked() {
+    const file = picker?.files?.[0];
+    const device = picking;
+    if (picker) picker.value = "";
+    if (!file || !device || !onimage) return;
+    try {
+      await onimage(device, file);
+      edit[device] = "idle";
+    } catch (e) {
+      imageError = { device, text: e instanceof Error ? e.message : String(e) };
+    }
+  }
+  async function resetImage(device: DeviceName) {
+    try {
+      await onresetimage?.(device);
+      edit[device] = "idle";
+    } catch (e) {
+      imageError = { device, text: e instanceof Error ? e.message : String(e) };
+    }
+  }
 
   /** Receiver on its 3.5 mm output: sound, but no status data. */
   const jackMode = $derived(snapshot.connection === "jack" && snapshot.jack !== null);
@@ -29,6 +92,9 @@
   /** Receiver on USB and switched on. */
   const on = $derived(snapshot.receiver !== null && !snapshot.receiver.switchedOff);
   const linked = $derived(on && tx1?.connected === true);
+  /** Receiver plugged in but switched off: it has power and blinks, yet still
+   *  has to be switched on with its button. */
+  const off = $derived(snapshot.receiver?.switchedOff === true);
 
   // Status lights drawn over the pictures, like the ones on the devices:
   // power next to "MIC RX", one per microphone above "1"/"2", and the light
@@ -39,10 +105,10 @@
   const unit2Light = $derived<Light>(on && tx2?.connected === true ? "green" : null);
   const txLight = $derived<Light>(!on ? "dark" : tx1?.connected === true ? "green" : tx1?.connected === false ? "yellow" : "dark");
 
-  /** Where the lights sit on the built-in silhouettes, in % of the picture. */
+  /** Where the lights sit on the built-in pictures, in % of the picture. */
   const BUILTIN_LEDS: LedLayout = {
-    receiver: { power: [43.4, 46], unit1: [23.7, 32.2], unit2: [32.9, 31.3] },
-    transmitter: { status: [67.2, 64] },
+    receiver: { power: [24.8, 55.7], unit1: [12.9, 24.3], unit2: [21.7, 26.8], button: [93.6, 54.4] },
+    transmitter: { status: [76.4, 56.1] },
   };
   // Own pictures only get lights where leds.json places them.
   const rxLeds = $derived(images.receiver ? images.leds?.receiver : BUILTIN_LEDS.receiver);
@@ -106,6 +172,11 @@
             <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5v5M6 6.5h4v3.2a2 2 0 0 1-4 0zM8 11.7v2.8" /></svg>
             <span>Klinke</span><span class="where">&nbsp;{snapshot.jack.label}</span>
           </button>
+        {:else if off}
+          <span class="pill warn power-pill" title={usb?.hint ?? undefined}>
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.8v5.4M4.6 4.2a5 5 0 1 0 6.8 0" /></svg>
+            Aus · bitte einschalten
+          </span>
         {:else if mark(usb) === "ok"}
           <span class="ok-dot" title={usb?.value}>
             <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 8.5l2.6 2.6L12 5.5" /></svg>
@@ -154,6 +225,8 @@
                 <path d="M9 1.5L3.5 9H8l-1 5.5L12.5 7H8z" />
               </svg>
             {/if}
+          {:else if off}
+            <span class="pill" title="Der Empfänger meldet sich erst, wenn er eingeschaltet ist">Erst Empfänger einschalten</span>
           {:else if tx.connected === false}
             <span class="pill">Nicht verbunden</span>
           {:else}
@@ -176,9 +249,31 @@
     {/if}
   {/snippet}
 
-  <div class="devices" class:absent={!snapshot.receiver && !jackMode} aria-hidden="true">
+  {#snippet editor(device: DeviceName)}
+    {#if onimage}
+      <svg class="ring" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="47" pathLength="100" /></svg>
+      <span class="edit" inert={edit[device] !== "shown"}>
+        <button onclick={() => pick(device)}>PNG hochladen</button>
+        {#if images[device]}<button class="reset" onclick={() => resetImage(device)}>Standard</button>{/if}
+        {#if imageError?.device === device}<span class="err">{imageError.text}</span>{/if}
+      </span>
+    {/if}
+  {/snippet}
+
+  {#if onimage}
+    <input class="picker" type="file" accept="image/png,image/webp,image/jpeg" bind:this={picker} onchange={picked} tabindex="-1" aria-hidden="true" />
+  {/if}
+
+  <div class="devices" class:absent={!snapshot.receiver && !jackMode} class:booting={off}>
     <div class="txwrap">
-      <div class="pic" style:width="{txBox.w}px" style:height="{txBox.h}px">
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <div
+        class="pic edit-{edit.transmitter}"
+        style:width="{txBox.w}px"
+        style:height="{txBox.h}px"
+        onpointerenter={() => editEnter("transmitter")}
+        onpointerleave={() => editLeave("transmitter")}
+      >
         <img
           class="tx"
           class:custom={images.transmitter !== null}
@@ -188,10 +283,18 @@
           onload={(e) => (txRatio = ratioOf(e.currentTarget))}
         />
         {#if txRatio}{@render led(txLeds?.status, txLight, "status")}{/if}
+        {@render editor("transmitter")}
       </div>
     </div>
     <div class="rx">
-      <div class="pic" style:width="{rxBox.w}px" style:height="{rxBox.h}px">
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <div
+        class="pic edit-{edit.receiver}"
+        style:width="{rxBox.w}px"
+        style:height="{rxBox.h}px"
+        onpointerenter={() => editEnter("receiver")}
+        onpointerleave={() => editLeave("receiver")}
+      >
         <img
           class:custom={images.receiver !== null}
           src={images.receiver ?? receiverImg}
@@ -202,7 +305,20 @@
           {@render led(rxLeds?.power, powerLight, "power")}
           {@render led(rxLeds?.unit1, unit1Light, "unit")}
           {@render led(rxLeds?.unit2, unit2Light, "unit")}
+          {#if off && rxLeds?.button}
+            {@const [bx, by] = rxLeds.button}
+            <!-- Scribbled note: an arrow from free space above onto the button. -->
+            <span class="press" style:left="{bx}%" style:top="{by}%"></span>
+            <div class="note" style:left="{bx}%" style:top="{by}%">
+              <svg class="arrow" viewBox="0 0 120 110" aria-hidden="true">
+                <path class="line" d="M98 8 C 112 40, 86 70, 22 92" />
+                <path class="head" d="M38 80 L 20 93 L 41 99" />
+              </svg>
+              <span class="scribble">5 Sek. halten<br />zum Einschalten</span>
+            </div>
+          {/if}
         {/if}
+        {@render editor("receiver")}
       </div>
     </div>
   </div>
@@ -494,6 +610,112 @@
     filter: drop-shadow(0 0 1px rgba(255, 255, 255, 0.35));
     transition: opacity 400ms, filter 400ms;
   }
+  .power-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 700;
+    animation: nudge 2.2s ease-in-out infinite;
+  }
+  .power-pill svg {
+    width: 13px;
+    height: 13px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+  }
+
+  @keyframes nudge {
+    50% {
+      opacity: 0.55;
+    }
+  }
+  /* Receiver off: the note must reach over the microphone picture. */
+  .booting .rx {
+    z-index: 3;
+  }
+  /* A ring pulses out of the button, as if someone were pressing it. */
+  .press {
+    position: absolute;
+    z-index: 2;
+    width: 30px;
+    height: 30px;
+    margin: -15px 0 0 -15px;
+    border-radius: 50%;
+    border: 2px solid var(--warn);
+    animation: press 1.8s ease-out infinite;
+    pointer-events: none;
+  }
+  @keyframes press {
+    0% {
+      transform: scale(0.55);
+      opacity: 0.95;
+    }
+    100% {
+      transform: scale(1.7);
+      opacity: 0;
+    }
+  }
+  /* The note's corner sits on the button; arrow and text rise above it. */
+  .note {
+    position: absolute;
+    z-index: 3;
+    width: 0;
+    height: 0;
+    pointer-events: none;
+    /* Undo most of the receiver's tilt so the writing stays easy to read. */
+    transform: rotate(6deg);
+    transform-origin: 0 0;
+  }
+  .arrow {
+    position: absolute;
+    left: 4px;
+    bottom: 4px;
+    width: 90px;
+    height: 78px;
+    fill: none;
+    stroke: var(--warn);
+    stroke-width: 3.2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    filter: drop-shadow(0 0 5px rgba(0, 0, 0, 0.9));
+  }
+  .arrow .line {
+    stroke-dasharray: 160;
+    stroke-dashoffset: 160;
+    animation: draw 700ms 150ms ease-out forwards;
+  }
+  .arrow .head {
+    opacity: 0;
+    animation: show 200ms 820ms ease-out forwards;
+  }
+  .scribble {
+    position: absolute;
+    left: 62px;
+    bottom: 70px;
+    font-family: "Caveat", "Segoe Print", "Comic Sans MS", cursive;
+    font-size: 27px;
+    font-weight: 600;
+    line-height: 0.95;
+    white-space: nowrap;
+    color: var(--warn);
+    text-shadow: 0 0 8px #000, 0 0 2px #000;
+    transform: rotate(-4deg);
+    opacity: 0;
+    animation: show 300ms 500ms ease-out forwards;
+  }
+  @keyframes draw {
+    to {
+      stroke-dashoffset: 0;
+    }
+  }
+  @keyframes show {
+    to {
+      opacity: 1;
+    }
+  }
+
   .tx.off {
     opacity: 0.45;
     filter: grayscale(1);
@@ -573,6 +795,134 @@
     width: 260px;
     height: var(--tx-h);
     transform: rotate(11deg);
+  }
+
+  /* Own picture: the ring is the same size on both devices and turned back
+     against the device's tilt, so it starts at the top. */
+  .picker {
+    display: none;
+  }
+  .ring {
+    position: absolute;
+    z-index: 3;
+    left: 50%;
+    top: 50%;
+    width: 250px;
+    height: 250px;
+    overflow: visible;
+    pointer-events: none;
+  }
+  .rx .ring {
+    transform: translate(-50%, -50%) rotate(-81deg);
+  }
+  .txwrap .ring {
+    transform: translate(-50%, -50%) rotate(-101deg);
+  }
+  .ring circle {
+    fill: #5d5763;
+    fill-opacity: 0;
+    stroke: #a59dac;
+    stroke-width: 3.2;
+    stroke-linecap: round;
+    stroke-dasharray: 100;
+    stroke-dashoffset: 100;
+    opacity: 0;
+    transition:
+      stroke-dashoffset 0.35s ease,
+      opacity 0.35s ease,
+      fill-opacity 0.35s ease;
+  }
+  /* 0–1 s nothing, 1–2 s fade in and the first quarter, 2–5 s the rest. */
+  .edit-arming .ring circle {
+    animation:
+      ring-draw 5s linear both,
+      ring-fade 5s ease-in both;
+  }
+  @keyframes ring-draw {
+    0%,
+    20% {
+      stroke-dashoffset: 100;
+    }
+    40% {
+      stroke-dashoffset: 75;
+    }
+    100% {
+      stroke-dashoffset: 0;
+    }
+  }
+  @keyframes ring-fade {
+    0%,
+    20% {
+      opacity: 0;
+    }
+    40%,
+    100% {
+      opacity: 0.9;
+    }
+  }
+  .edit-shown .ring circle {
+    stroke-dashoffset: 0;
+    opacity: 0.95;
+    fill-opacity: 0.88;
+  }
+  .edit {
+    position: absolute;
+    z-index: 4;
+    left: 50%;
+    top: 50%;
+    width: 200px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    opacity: 0;
+    pointer-events: none;
+    transition:
+      opacity 0.3s,
+      transform 0.3s;
+  }
+  .rx .edit {
+    transform: translate(-50%, -50%) rotate(9deg) scale(0.9);
+  }
+  .txwrap .edit {
+    transform: translate(-50%, -50%) rotate(-11deg) scale(0.9);
+  }
+  .edit-shown .edit {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .rx .edit-shown .edit {
+    transform: translate(-50%, -50%) rotate(9deg);
+  }
+  .txwrap .edit-shown .edit {
+    transform: translate(-50%, -50%) rotate(-11deg);
+  }
+  .edit button {
+    font: 600 13px/1.3 inherit;
+    font-family: inherit;
+    color: #fff;
+    background: none;
+    border: 0;
+    padding: 3px 6px;
+    text-shadow: 0 1px 3px #0008;
+    cursor: pointer;
+  }
+  .edit button:hover,
+  .edit button:focus-visible {
+    text-decoration: underline;
+  }
+  .edit .reset {
+    font-weight: 500;
+    font-size: 12px;
+    color: #e4dce8;
+  }
+  .edit .err {
+    max-width: 180px;
+    font-size: 11.5px;
+    line-height: 1.3;
+    text-align: center;
+    color: #ffd2cf;
+    text-shadow: 0 1px 3px #000a;
   }
 
   @media (max-width: 820px) {

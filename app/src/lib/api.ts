@@ -15,6 +15,8 @@ export interface Backend {
   stopMicTest(): Promise<void>;
   /** Change a receiver or transmitter setting; progress shows up in snapshots. */
   setDeviceSetting(id: string, value: string): Promise<void>;
+  /** Restart the receiver (about 6 s without sound); snapshots show it. */
+  restartReceiver(): Promise<void>;
   /** Use this jack input (receiver on its 3.5 mm output); remembered. */
   setJackInput(nodeName: string): Promise<void>;
   appSettings(): Promise<AppSettings>;
@@ -25,7 +27,13 @@ export interface Backend {
   startPage(): Promise<string | null>;
   /** The user's own device pictures, if any. */
   deviceImages(): Promise<DeviceImages>;
+  /** Copies a picked picture into MicDeck's own folder; the new set. */
+  setDeviceImage(device: DeviceName, file: File): Promise<DeviceImages>;
+  /** Back to the built-in picture; the new set. */
+  resetDeviceImage(device: DeviceName): Promise<DeviceImages>;
 }
+
+export type DeviceName = "receiver" | "transmitter";
 
 const insideTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
@@ -43,11 +51,15 @@ async function tauriBackend(): Promise<Backend> {
     stopMicTest: () => invoke("stop_mic_test"),
     setDeviceSetting: (id, value) => invoke("set_device_setting", { id, value }),
     setJackInput: (nodeName) => invoke("set_jack_input", { nodeName }),
+    restartReceiver: () => invoke("restart_receiver"),
     appSettings: () => invoke<AppSettings>("get_app_settings"),
     setAppSetting: (setting, on) => invoke<AppSettings>("set_app_setting", { setting, on }),
     onAppSettings: (cb) => listen<AppSettings>("micdeck:app-settings", (e) => cb(e.payload)),
     startPage: () => invoke<string | null>("start_page"),
     deviceImages: () => invoke<DeviceImages>("device_images"),
+    setDeviceImage: async (device, file) =>
+      invoke<DeviceImages>("set_device_image", new Uint8Array(await file.arrayBuffer()), { headers: { device } }),
+    resetDeviceImage: (device) => invoke<DeviceImages>("reset_device_image", { device }),
   };
 }
 

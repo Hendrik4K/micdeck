@@ -198,7 +198,7 @@ export interface DeviceImages {
 /** Light position as [x, y] or [x, y, width, height], in % of the picture. */
 export type LedSpot = number[];
 export interface LedLayout {
-  receiver?: { power?: LedSpot; unit1?: LedSpot; unit2?: LedSpot };
+  receiver?: { power?: LedSpot; unit1?: LedSpot; unit2?: LedSpot; /** the on/off button */ button?: LedSpot };
   transmitter?: { status?: LedSpot };
 }
 
@@ -222,6 +222,8 @@ export interface Snapshot {
   simulated: boolean;
   demoLabel: string | null;
   connection: Connection;
+  /** The receiver is restarting (asked for in MicDeck). */
+  restarting: boolean;
   jack: JackView | null;
   verdict: Verdict;
   checks: Check[];

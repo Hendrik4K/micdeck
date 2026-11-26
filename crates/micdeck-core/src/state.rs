@@ -25,6 +25,10 @@ pub(crate) const CLIP_HOLD_MS: u64 = 3_000;
 pub(crate) const LEVEL_STALE_MS: u64 = 1_000;
 /// A setting change without a final answer after this long counts as lost.
 pub(crate) const WRITE_STALE_MS: u64 = 10_000;
+/// A receiver restart shows as such for at most this long.
+pub(crate) const RESTART_MAX_MS: u64 = 20_000;
+/// …and at least this long: it drops off USB twice while booting.
+pub(crate) const RESTART_MIN_MS: u64 = 7_000;
 /// How many setting changes the log keeps.
 const WRITE_LOG_LEN: usize = 30;
 /// Setting changes older than this drop out of the log.
@@ -43,6 +47,8 @@ pub enum Input {
     /// The jack input the user picked (`node.name`), for when the receiver is
     /// connected by its 3.5 mm output instead of USB-C.
     JackChoice(Option<String>),
+    /// The user asked to restart the receiver; the command is on its way.
+    RestartRequested,
 }
 
 #[derive(Debug, Clone)]
@@ -130,6 +136,8 @@ pub struct State {
     pub(crate) writes: VecDeque<WriteRecord>,
     /// Preferred jack input (`node.name`), see [`Input::JackChoice`].
     pub(crate) jack_choice: Option<String>,
+    /// When the receiver restart was requested (state clock).
+    pub(crate) restart_ms: Option<u64>,
 }
 
 impl State {
@@ -149,6 +157,7 @@ impl State {
             mic_test: MicTestState::Idle,
             writes: VecDeque::new(),
             jack_choice: None,
+            restart_ms: None,
         }
     }
 
@@ -174,6 +183,7 @@ impl State {
                 }
             }
             Input::JackChoice(choice) => self.jack_choice = choice,
+            Input::RestartRequested => self.restart_ms = Some(now_ms),
         }
     }
 
@@ -219,6 +229,14 @@ impl State {
     }
 
     fn record_write(&mut self, key: String, report: WriteReport, now_ms: u64) {
+        // A restart is not a setting change: keep it out of the log. Only a
+        // refusal before anything was sent ends the "restarting" state early.
+        if report.setting == crate::device_settings::RESTART {
+            if matches!(report.phase, WritePhase::Rejected { .. }) {
+                self.restart_ms = None;
+            }
+            return;
+        }
         if let Some(record) = self.writes.iter_mut().find(|r| r.report.request == report.request) {
             record.report = report;
             return;
@@ -310,6 +328,30 @@ impl State {
     /// Whether `source` belongs to a DJI receiver.
     pub(crate) fn is_receiver_source(&self, source: &AudioSource) -> bool {
         source.is_dji() || self.active_source().is_some_and(|d| d.node_name == source.node_name)
+    }
+
+    /// Where to send a restart: the primary receiver's key and the value its
+    /// plug-free speaker setting has right now (written back unchanged).
+    pub fn restart_target(&self, now_ms: u64) -> Result<(String, String), String> {
+        let p = self.primary().ok_or("Kein Empfänger am USB.")?;
+        let status = p.live_status(now_ms).ok_or("Der Empfänger sendet gerade keine Statusdaten.")?;
+        let value = status.settings.get("plug-free").ok_or("Diese Firmware meldet den nötigen Wert nicht.")?;
+        Ok((p.usb.key.clone(), value.clone()))
+    }
+
+    /// The receiver is restarting: requested a moment ago, and not yet back
+    /// with live status and a connected microphone.
+    pub fn restarting(&self, now_ms: u64) -> bool {
+        let Some(at) = self.restart_ms else { return false };
+        let since = now_ms.saturating_sub(at);
+        if since >= RESTART_MAX_MS {
+            return false;
+        }
+        let back = self
+            .primary()
+            .and_then(|p| p.live_status(now_ms))
+            .is_some_and(|s| s.tx.iter().any(|t| t.is_some()));
+        since < RESTART_MIN_MS || !back
     }
 
     /// Analog inputs with a plug in their socket (jack detection), Front first.
